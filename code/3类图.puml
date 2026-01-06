@@ -1,0 +1,650 @@
+@startuml class_diagram_complete
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam classFontSize 12
+skinparam classFontStyle Bold
+skinparam packageStyle rectangle
+skinparam stereotypeFontSize 11
+skinparam noteFontSize 12
+
+package "核心抽象层" {
+class ModelType {
+FOUNDATION
+ASSISTANT
+REASONING
+EMBEDDING
+RERANKER
+OCR
+SPEECH
+CUSTOM
+KNOWLEDGE_GRAPH
+FEEDBACK_ANALYZER
+}
+
+class ToolChainType {
+AGENT
+RAG
+KNOWLEDGE_GRAPH
+RL
+MEMORY
+SYSTEM_TOOLS
+ENVIRONMENT
+CONTINUOUS_LEARNING
+}
+
+interface ModelInterface {
++model_type: ModelType
++config: Dict[str, Any]
++{abstract} load(): None
++{abstract} unload(): None
++{abstract} validate_config(): bool
++{abstract} get_model_info(): Dict[str, Any]
+}
+
+abstract class BaseModel {
+-config: Dict[str, Any]
+-model_type: ModelType
+-model_name: str
+-model_version: str
+-parameters: Dict[str, Any]
+-is_loaded: bool
+-logger: Logger
+-creation_time: float
+-last_access_time: float
+-usage_count: int
++init(config: Dict[str, Any])
++{abstract} load(): None
++{abstract} unload(): None
++{abstract} validate_config(): bool
++{abstract} get_model_info(): Dict[str, Any]
++str(): str
++record_usage(context: Dict[str, Any] = None): None
+}
+
+abstract class ToolChainComponent {
+-config: Dict[str, Any]
+-component_type: ToolChainType
+-is_enabled: bool
+-priority: int
+-timeout: float
+-retry_count: int
+-logger: Logger
+-initialized: bool
+-execution_count: int
+-avg_execution_time: float
+-error_count: int
+-last_execution_time: float
++init(config: Dict[str, Any])
++{abstract} initialize(): None
++{abstract} execute(context: Dict[str, Any]): Dict[str, Any]
++{abstract} cleanup(): None
++update_metrics(execution_time: float, success: bool): None
++get_metrics(): Dict[str, Any]
++str(): str
+}
+}
+
+package "模型组件" {
+class FoundationModel {
+-api_key: str
+-base_url: str
+-temperature: float
+-max_tokens: int
+-top_p: float
+-frequency_penalty: float
+-presence_penalty: float
+-stop_sequences: List[str]
+-response_format: str
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, str]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++generate(prompt: str, **kwargs): str
++get_embedding(text: str): np.ndarray
++_get_cache_key(prompt: str, **kwargs): str
++_get_cached_response(cache_key: str): Optional[str]
++_set_cached_response(cache_key: str, response: str): None
+}
+
+class EmbeddingModel {
+-embedding_dim: int
+-normalize: bool
+-batch_size: int
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, np.ndarray]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++embed(text: Union[str, List[str]]): np.ndarray
++_get_cache_key(text: str): str
++_get_cached_embedding(cache_key: str): Optional[np.ndarray]
++_set_cached_embedding(cache_key: str, embedding: np.ndarray): None
+}
+
+class RerankerModel {
+-top_k: int
+-min_score_threshold: float
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, List[Tuple[str, float]]]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++rerank(query: str, documents: List[str], scores: List[float] = None): List[Tuple[str, float]]
+}
+
+class OCRModel {
+-supported_languages: List[str]
+-confidence_threshold: float
+-max_image_size: Tuple[int, int]
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, Dict[str, Any]]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++recognize(image_path: str, language: str = 'chinese'): Dict[str, Any]
++_get_cache_key(image_path: str, language: str): str
++_get_cached_result(cache_key: str): Optional[Dict[str, Any]]
++_set_cached_result(cache_key: str, result: Dict[str, Any]): None
+}
+
+class KnowledgeGraphModel {
+-graph_db: KnowledgeGraphInterface
+-cache_enabled: bool
+-cache_ttl: int
+-_query_cache: Dict[str, Any]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++execute_query(query: str, query_type: str = 'custom', **kwargs): List[Dict[str, Any]]
++add_entity(entity_id: str, entity_type: str, attributes: Dict[str, Any]): bool
++add_relation(source_id: str, target_id: str, relation_type: str, attributes: Dict[str, Any] = None): bool
++_get_cache_key(query_type: str, params: Dict[str, Any]): str
++_get_cached_result(cache_key: str): Optional[Any]
++_set_cached_result(cache_key: str, result: Any): None
+}
+
+class FeedbackAnalyzerModel {
+-foundation_model: FoundationModel
+-min_confidence: float
+-batch_size: int
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, Dict[str, Any]]
+-_cache_times: Dict[str, float]
++analyze_feedback(feedback: Dict[str, Any]): Dict[str, Any]
++_get_cache_key(feedback_text: str): str
++_get_cached_analysis(cache_key: str): Optional[Dict[str, Any]]
++_set_cached_analysis(cache_key: str, analysis: Dict[str, Any]): None
+}
+}
+
+package "知识图谱" {
+interface KnowledgeGraphInterface {
++{abstract} add_entity(entity_id: str, entity_type: str, attributes: Dict[str, Any]): None
++{abstract} add_relation(source_id: str, target_id: str, relation_type: str, attributes: Dict[str, Any] = None): None
++{abstract} query_entities(entity_type: str = None, attributes: Dict[str, Any] = None): List[Dict[str, Any]]
++{abstract} query_relations(source_id: str = None, target_id: str = None, relation_type: str = None): List[Dict[str, Any]]
++{abstract} execute_query(query: str): List[Dict[str, Any]]
++{abstract} get_entity_neighbors(entity_id: str, max_depth: int = 1): Dict[str, Any]
++{abstract} close(): None
+}
+
+class MemoryKnowledgeGraph {
+-entities: Dict[str, Dict[str, Any]]
+-relations: List[Dict[str, Any]]
+-logger: Logger
+-embedding_dim: int
+-similarity_threshold: float
+-entity_embeddings: Dict[str, np.ndarray]
++add_entity(entity_id: str, entity_type: str, attributes: Dict[str, Any]): None
++add_relation(source_id: str, target_id: str, relation_type: str, attributes: Dict[str, Any] = None): None
++query_entities(entity_type: str = None, attributes: Dict[str, Any] = None): List[Dict[str, Any]]
++query_relations(source_id: str = None, target_id: str = None, relation_type: str = None): List[Dict[str, Any]]
++execute_query(query: str): List[Dict[str, Any]]
++get_entity_neighbors(entity_id: str, max_depth: int = 1): Dict[str, Any]
++close(): None
+}
+
+class KnowledgeExtractor {
+-config: Dict[str, Any]
+-logger: Logger
+-min_confidence: float
+-max_entities_per_doc: int
+-allowed_entity_types: Set[str]
++extract_knowledge(text: str, entity_types: List[str] = None): Dict[str, Any]
++_extract_entities(text: str, entity_types: List[str] = None): List[Dict[str, Any]]
++_extract_relations(entities: List[Dict[str, Any]], text: str): List[Dict[str, Any]]
+}
+}
+
+package "检索策略" {
+interface RetrievalStrategy {
++{abstract} retrieve(query: str, context: Dict[str, Any]): List[Dict[str, Any]]
++{abstract} get_strategy_info(): Dict[str, Any]
+}
+
+class SemanticRetrievalStrategy {
+-top_k: int
+-similarity_threshold: float
+-batch_size: int
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, List[Dict[str, Any]]]
+-_cache_times: Dict[str, float]
++retrieve(query: str, context: Dict[str, Any]): List[Dict[str, Any]]
++_get_cache_key(query: str, domain: str = None): str
++_get_cached_results(cache_key: str): Optional[List[Dict[str, Any]]]
++_set_cached_results(cache_key: str, results: List[Dict[str, Any]]): None
++get_strategy_info(): Dict[str, Any]
+}
+
+class KeywordRetrievalStrategy {
+-top_k: int
+-min_score: float
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, List[Dict[str, Any]]]
+-_cache_times: Dict[str, float]
++retrieve(query: str, context: Dict[str, Any]): List[Dict[str, Any]]
++_get_cache_key(query: str, domain: str = None): str
++_get_cached_results(cache_key: str): Optional[List[Dict[str, Any]]]
++_set_cached_results(cache_key: str, results: List[Dict[str, Any]]): None
++get_strategy_info(): Dict[str, Any]
+}
+
+class HybridRetrievalStrategy {
+-semantic_weight: float
+-keyword_weight: float
+-top_k: int
+-relevancy_threshold: float
+-semantic_strategy: SemanticRetrievalStrategy
+-keyword_strategy: KeywordRetrievalStrategy
+-cache_enabled: bool
+-cache_ttl: int
+-_cache: Dict[str, List[Dict[str, Any]]]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++retrieve(query: str, context: Dict[str, Any]): List[Dict[str, Any]]
++_get_cache_key(query: str, domain: str = None): str
++_get_cached_results(cache_key: str): Optional[List[Dict[str, Any]]]
++_set_cached_results(cache_key: str, results: List[Dict[str, Any]]): None
++_fuse_results(semantic_results: List[Dict], keyword_results: List[Dict]): List[Dict]
++get_strategy_info(): Dict[str, Any]
+}
+}
+
+package "工具链组件" {
+class RAGComponent {
+-retrieval_strategy_type: str
+-rerank_enabled: bool
+-cache_enabled: bool
+-use_memory_context: bool
+-use_kg_context: bool
+-max_context_length: int
+-similarity_threshold: float
+-_strategy: RetrievalStrategy
+-_cache: Dict[str, Any]
+-_cache_times: Dict[str, float]
++initialize(): None
++execute(context: Dict[str, Any]): Dict[str, Any]
++_enhance_query_with_memories(query: str, memories: List[Dict]): str
++_enhance_query_with_knowledge(query: str, kg_context: str): str
++_truncate_context(results: List[Dict]): List[Dict]
++cleanup(): None
+}
+
+class AgentComponent {
+-tools: List[str]
+-max_steps: int
+-memory_enabled: bool
+-dynamic_routing: bool
+-routing_threshold: float
+-max_response_length: int
+-tool_timeout: float
+-enable_knowledge_integration: bool
++initialize(): None
++execute(context: Dict[str, Any]): Dict[str, Any]
++_determine_execution_order(query: str, context: Dict[str, Any]): List[str]
++_build_agent_prompt(query: str, history: List[Dict], context: Dict[str, Any]): str
++_parse_agent_response(response: str): Tuple[str, str, str]
++cleanup(): None
+}
+
+class MemorySystemComponent {
+-memory_type: str
+-max_memory_size: int
+-embedding_model_name: str
+-recall_threshold: float
+-enhance_rag: bool
+-max_recall_count: int
+-forget_threshold: float
+-importance_decay: float
+-cache_enabled: bool
+-cache_ttl: int
+-_recall_cache: Dict[str, List[Dict[str, Any]]]
+-_cache_times: Dict[str, float]
++initialize(): None
++execute(context: Dict[str, Any]): Dict[str, Any]
++_get_cache_key(query: str, domain: str = None): str
++_get_cached_memories(cache_key: str): Optional[List[Dict[str, Any]]]
++_set_cached_memories(cache_key: str, memories: List[Dict[str, Any]]): None
++_recall_memories(query: str, context: Dict[str, Any]): List[Dict[str, Any]]
++_create_memory_entry(query: str, context: Dict[str, Any]): Dict[str, Any]
++_update_memory_store(new_memory: Dict[str, Any]): None
++_apply_forgetting_mechanism(): None
++cleanup(): None
+}
+
+class KnowledgeGraphComponent {
+-knowledge_graph_model: KnowledgeGraphModel
+-embedding_model: EmbeddingModel
+-knowledge_extractor: KnowledgeExtractor
+-enable_extraction: bool
+-enable_query: bool
+-max_query_depth: int
+-relevancy_threshold: float
+-entity_types: List[str]
+-cache_enabled: bool
+-cache_ttl: int
+-_query_cache: Dict[str, Any]
+-_cache_times: Dict[str, float]
+-_lock: threading.Lock
++initialize(): None
++execute(context: Dict[str, Any]): Dict[str, Any]
++_get_cache_key(query: str, domain: str): str
++_get_cached_results(cache_key: str): Optional[Dict[str, Any]]
++_set_cached_results(cache_key: str, results: Dict[str, Any]): None
++_extract_and_store_knowledge(context: Dict[str, Any]): None
++_query_relevant_knowledge(query: str, context: Dict[str, Any]): Dict[str, Any]
++_build_knowledge_context(results: Dict[str, Any]): str
++cleanup(): None
+}
+
+class ContinuousLearningComponent {
+-learning_interval: int
+-min_feedback_count: int
+-learning_batch_size: int
+-last_learning_time: float
+-learning_history_manager: LearningHistoryManager
+-model_updater: ModelUpdater
+-feedback_analyzer: FeedbackAnalyzerModel
+-learning_executor: ThreadPoolExecutor
+-is_learning: bool
++initialize(): None
++execute(context: Dict[str, Any]): Dict[str, Any]
++_should_learn(current_time: float): bool
++_get_learning_feedback(): List[Dict[str, Any]]
++perform_learning(feedback List[Dict[str, Any]], task_id: int): Dict[str, Any]
++analyze_feedback_batch(feedback List[Dict[str, Any]]): List[Dict[str, Any]]
++_evaluate_learning_effect(update_results: Dict[str, Any]): Dict[str, Any]
++_learning_completed(future, task_id: int): None
++add_feedback(feedback: Dict[str, Any]): bool
++cleanup(): None
+}
+}
+
+package "管理系统" {
+class ModelManager {
+-config_manager: ConfigManager
+-models: Dict[str, BaseModel]
+-logger: Logger
+-model_load_times: Dict[str, float]
+-model_usage_stats: defaultdict
++load_models(): Dict[str, BaseModel]
++unload_models(): None
++get_model(model_name: str): Optional[BaseModel]
++get_model_stats(): Dict[str, Any]
++health_check(): Dict[str, Any]
+}
+
+class ToolChainManager {
+-config_manager: ConfigManager
+-components: List[ToolChainComponent]
+-logger: Logger
+-component_init_times: Dict[str, float]
+-component_stats: defaultdict
++initialize_components(): List[ToolChainComponent]
++cleanup_components(): None
++get_component(component_type: str): Optional[ToolChainComponent]
++get_component_stats(): Dict[str, Any]
++get_components_by_type(component_type: ToolChainType): List[ToolChainComponent]
++health_check(): Dict[str, Any]
+}
+
+class ResourceManager {
+-application: VerticalDomainApplication
+-logger: Logger
+-auto_scale_enabled: bool
+-resource_thresholds: Dict[str, float]
+-scale_cooldown: int
+-last_scale_time: float
+-scale_history: List[Dict[str, Any]]
++monitor_resources(): Dict[str, Any]
++check_scaling_needs(): Dict[str, Any]
++scale_resources(scale_action: str): Dict[str, Any]
++optimize_resources(): Dict[str, Any]
++_cleanup_caches(): Dict[str, Any]
++_compact_memory(): Dict[str, Any]
++_optimize_threads(): Dict[str, Any]
+}
+
+class HealthChecker {
+-application: VerticalDomainApplication
+-logger: Logger
+-check_interval: int
+-last_check_time: float
+-health_status: Dict[str, Any]
++perform_health_check(): Dict[str, Any]
++_check_resources(): Dict[str, Any]
+}
+
+class LearningHistoryManager {
+-config: Dict[str, Any]
+-db_path: str
+-max_history_size: int
+-min_samples_for_update: int
+-logger: Logger
++_init_database(): None
++add_feedback(feedback: Dict[str, Any]): bool
++get_feedback_for_learning(min_score: int = None, max_score: int = None, domain: str = None, limit: int = 1000): List[Dict[str, Any]]
++create_learning_task(task_type: str, params: Dict[str, Any]): int
++update_learning_task(task_id: int, status: str, result: Dict[str, Any] = None): bool
++get_pending_tasks(): List[Dict[str, Any]]
++cleanup_old_history(): int
+}
+
+class ModelUpdater {
+-config: Dict[str, Any]
+-logger: Logger
+-update_threshold: float
+-max_retries: int
+-backup_enabled: bool
+-model_backup_dir: str
++should_update_model(current_performance: float, new_performance: float): bool
++backup_model(model: BaseModel): str
++update_model_parameters(model: BaseModel, feedback_ List[Dict[str, Any]]): Dict[str, Any]
+}
+}
+
+package "核心应用" {
+class ApplicationContext {
+-data: Dict[str, Any]
+-lock: threading.Lock
+-creation_time: float
+-last_access_time: float
+-request_count: int
++set(key: str, value: Any): None
++get(key: str, default: Any = None): Any
++update( Dict[str, Any]): None
++clear(): None
++get_context_stats(): Dict[str, Any]
++str(): str
+}
+
+class RequestProcessor {
+-application: VerticalDomainApplication
+-logger: Logger
+-request_counter: int
+-avg_processing_time: float
+-error_count: int
+-request_history: deque
++process_request(request: Dict[str, Any]): Dict[str, Any]
++_record_request_start(request_id: str, request: Dict[str, Any], start_time: float): None
++_determine_execution_order(context: ApplicationContext, components: List[ToolChainComponent], dynamic_routing_enabled: bool): List[str]
++_execute_components_in_order(context: ApplicationContext, components: List[ToolChainComponent], execution_order: List[str]): ApplicationContext
++_execute_component(component: ToolChainComponent, context: ApplicationContext): ApplicationContext
++_generate_response(context: ApplicationContext, start_time: float): Dict[str, Any]
++_estimate_token_usage(query: str, response: str): Dict[str, int]
++_calculate_response_quality(response: str): float
++_calculate_confidence_score(context: ApplicationContext): float
++_record_request_complete(request_id: str, response: Dict[str, Any], start_time: float): None
++_trigger_continuous_learning(context: ApplicationContext, response: Dict[str, Any]): None
++_generate_error_response(error: Exception, start_time: float, request_id: str): Dict[str, Any]
++get_processor_stats(): Dict[str, Any]
+}
+
+class VerticalDomainApplication {
+-config_manager: ConfigManager
+-model_manager: ModelManager
+-tool_chain_manager: ToolChainManager
+-request_processor: RequestProcessor
+-health_checker: HealthChecker
+-resource_manager: ResourceManager
+-is_initialized: bool
+-logger: Logger
+-start_time: float
+-last_health_check: float
+-models: Dict[str, BaseModel]
+-tool_chain_components: List[ToolChainComponent]
++initialize(): None
++_print_initialization_summary(): None
++cleanup(): None
++process_request(request: Dict[str, Any]): Dict[str, Any]
++get_application_info(): Dict[str, Any]
++_format_uptime(seconds: float): str
++add_user_feedback(feedback: Dict[str, Any]): bool
++enter(): VerticalDomainApplication
++exit(exc_type, exc_val, exc_tb): None
+}
+}
+
+package "工厂与配置" {
+class ModelFactory {
+-{static} _model_registry: Dict[str, Type[BaseModel]]
++{static} register_model(model_type: ModelType, model_class: Type[BaseModel]): None
++{static} create_model(model_type: str, config: Dict[str, Any]): BaseModel
++{static} get_registered_models(): Dict[str, Type[BaseModel]]
+}
+
+class ToolChainFactory {
+-{static} _component_registry: Dict[str, Type[ToolChainComponent]]
++{static} register_component(component_type: ToolChainType, component_class: Type[ToolChainComponent]): None
++{static} create_component(component_type: str, config: Dict[str, Any]): ToolChainComponent
++{static} get_registered_components(): Dict[str, Type[ToolChainComponent]]
+}
+
+class ConfigManager {
+-config_file: Optional[str]
+-config: Dict[str, Any]
+-logger: Logger
++init(config_file: Optional[str] = None)
++_load_default_config(): Dict[str, Any]
++_setup_logging(): None
++load_config_from_file(file_path: str): None
++_merge_configs(base: Dict, override: Dict): None
++get_model_configs(): Dict[str, ModelConfig]
++get_tool_chain_configs(): List[ToolChainConfig]
++validate_config(): bool
+}
+
+class ModelConfig {
+-model_type: str
+-model_name: str
+-parameters: Dict[str, Any]
+-enabled: bool
+-priority: int
++init(model_type: str, model_name: str, parameters: Dict[str, Any] = {}, enabled: bool = True, priority: int = 0)
+}
+
+class ToolChainConfig {
+-component_type: str
+-enabled: bool
+-priority: int
+-parameters: Dict[str, Any]
++init(component_type: str, enabled: bool = True, priority: int = 0, parameters: Dict[str, Any] = {})
+}
+}
+
+' 关系定义 - 带中文标注
+ModelType -[hidden]- ToolChainType
+ModelInterface <|.. BaseModel : "实现"
+BaseModel <|-- FoundationModel : "继承"
+BaseModel <|-- EmbeddingModel : "继承"
+BaseModel <|-- RerankerModel : "继承"
+BaseModel <|-- OCRModel : "继承"
+BaseModel <|-- KnowledgeGraphModel : "继承"
+BaseModel <|-- FeedbackAnalyzerModel : "继承"
+
+ToolChainComponent <|-- RAGComponent : "继承"
+ToolChainComponent <|-- AgentComponent : "继承"
+ToolChainComponent <|-- MemorySystemComponent : "继承"
+ToolChainComponent <|-- KnowledgeGraphComponent : "继承"
+ToolChainComponent <|-- ContinuousLearningComponent : "继承"
+
+KnowledgeGraphInterface <|.. MemoryKnowledgeGraph : "实现"
+KnowledgeGraphModel o-- KnowledgeGraphInterface : "使用"
+KnowledgeGraphComponent o-- KnowledgeGraphModel : "使用"
+KnowledgeGraphComponent o-- EmbeddingModel : "使用"
+KnowledgeGraphComponent o-- KnowledgeExtractor : "使用"
+
+RAGComponent o-- RetrievalStrategy : "使用"
+RetrievalStrategy <|.. SemanticRetrievalStrategy : "实现"
+RetrievalStrategy <|.. KeywordRetrievalStrategy : "实现"
+RetrievalStrategy <|.. HybridRetrievalStrategy : "实现"
+HybridRetrievalStrategy o-- SemanticRetrievalStrategy : "组合"
+HybridRetrievalStrategy o-- KeywordRetrievalStrategy : "组合"
+
+ModelManager o-- BaseModel : "管理"
+ToolChainManager o-- ToolChainComponent : "管理"
+ResourceManager o-- VerticalDomainApplication : "监控"
+HealthChecker o-- VerticalDomainApplication : "检查"
+RequestProcessor o-- VerticalDomainApplication : "处理"
+LearningHistoryManager o-- ContinuousLearningComponent : "服务"
+ModelUpdater o-- ContinuousLearningComponent : "服务"
+ContinuousLearningComponent o-- FeedbackAnalyzerModel : "使用"
+
+VerticalDomainApplication o-- ConfigManager : "使用"
+VerticalDomainApplication o-- ModelManager : "包含"
+VerticalDomainApplication o-- ToolChainManager : "包含"
+VerticalDomainApplication o-- RequestProcessor : "包含"
+VerticalDomainApplication o-- HealthChecker : "包含"
+VerticalDomainApplication o-- ResourceManager : "包含"
+ApplicationContext o-- RequestProcessor : "提供"
+ContinuousLearningComponent o-- LearningHistoryManager : "依赖"
+ContinuousLearningComponent o-- ModelUpdater : "依赖"
+ContinuousLearningComponent o-- FeedbackAnalyzerModel : "依赖"
+
+ModelFactory --> BaseModel : "创建"
+ToolChainFactory --> ToolChainComponent : "创建"
+ConfigManager o-- ModelConfig : "加载"
+ConfigManager o-- ToolChainConfig : "加载"
+
+RAGComponent o-- EmbeddingModel : "调用"
+RAGComponent o-- RerankerModel : "调用"
+AgentComponent o-- FoundationModel : "调用"
+MemorySystemComponent o-- EmbeddingModel : "依赖"
+AgentComponent o-- RAGComponent : "协调"
+AgentComponent o-- MemorySystemComponent : "利用"
+AgentComponent o-- KnowledgeGraphComponent : "查询"
+
+note top of BaseModel
+所有模型的抽象基类
+定义了模型的基本属性和方法
+end note
+
+note right of ToolChainComponent
+所有工具链组件的抽象基类
+定义了组件的生命周期管理
+end note
+
+@enduml

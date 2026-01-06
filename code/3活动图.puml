@@ -1,0 +1,230 @@
+@startuml activity_diagram_complete
+skinparam activity {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+skinparam conditionStyle diamond
+skinparam defaultFontSize 13
+skinparam activityFontSize 13
+skinparam activityFontStyle Bold
+skinparam nodesep 10
+skinparam ranksep 20
+
+start
+
+:应用启动;
+:创建配置管理器(ConfigManager);
+:加载默认配置;
+if (存在自定义配置文件?) then (是)
+  :加载自定义配置;
+  :合并默认配置和自定义配置;
+endif
+:验证配置;
+if (配置验证失败?) then (是)
+  :记录错误日志;
+  :抛出配置验证异常;
+  stop
+endif
+
+partition "应用初始化" {
+  :创建垂直领域应用(VerticalDomainApplication);
+  :初始化模型管理器(ModelManager);
+  :初始化工具链管理器(ToolChainManager);
+  :初始化请求处理器(RequestProcessor);
+  :初始化健康检查器(HealthChecker);
+  :初始化资源管理器(ResourceManager);
+}
+
+partition "模型加载" {
+  :获取配置中的模型列表;
+  :按优先级排序模型;
+  while (还有未加载的模型?) is (是)
+    :获取下一个模型配置;
+    :创建模型实例(ModelFactory);
+    :加载模型(load());
+    if (加载成功?) then (是)
+      :记录模型加载时间;
+      :将模型添加到模型字典;
+    else (否)
+      :记录错误日志;
+    endif
+  endwhile
+  if (没有成功加载模型?) then (是)
+    :抛出运行时错误;
+    :清理已加载资源;
+    stop
+  endif
+  :记录成功加载的模型数量;
+}
+
+partition "工具链初始化" {
+  :获取配置中的工具链组件列表;
+  :按优先级排序组件;
+  while (还有未初始化的组件?) is (是)
+    :获取下一个组件配置;
+    :创建组件实例(ToolChainFactory);
+    :初始化组件(initialize());
+    if (初始化成功?) then (是)
+      :记录组件初始化时间;
+      :将组件添加到组件列表;
+    else (否)
+      :记录错误日志;
+    endif
+  endwhile
+  :按优先级重新排序组件列表;
+  :记录成功初始化的组件数量;
+}
+
+partition "系统健康检查" {
+  :执行初始健康检查(perform_health_check);
+  :检查模型健康状态;
+  :检查组件健康状态;
+  :检查系统资源状态;
+  :计算整体健康状态;
+  :记录健康检查结果;
+  :设置最后检查时间;
+}
+
+partition "资源优化" {
+  :监控系统资源;
+  :清理过期缓存;
+  :压缩内存使用;
+  :优化线程池配置;
+  :记录资源优化结果;
+}
+
+:标记应用为已初始化;
+:打印初始化摘要;
+note right
+  包含加载的模型数量、
+  初始化的组件数量、
+  运行时间等信息
+end note
+
+while (应用运行中?) is (是)
+  fork
+    partition "健康检查循环" {
+      :获取当前时间;
+      if (距离上次健康检查 > 间隔?) then (是)
+        :执行健康检查;
+        :更新最后检查时间;
+      endif
+    }
+  fork again
+    partition "资源管理循环" {
+      :获取当前时间;
+      if (距离上次资源优化 > 60秒?) then (是)
+        :执行资源优化(optimize_resources);
+      endif
+      if (距离上次扩展检查 > 扩展冷却时间?) then (是)
+        :检查扩展需求(check_scaling_needs);
+        if (需要扩展?) then (是)
+          :执行资源扩展(scale_resources);
+        endif
+      endif
+    }
+  end fork
+  
+  :等待请求;
+  if (收到关闭信号?) then (是)
+    break
+  endif
+  
+  :接收用户请求;
+  partition "请求处理" {
+    :生成唯一请求ID;
+    :创建请求上下文(ApplicationContext);
+    :设置上下文数据;
+    
+    partition "路由决策" {
+      :检查动态路由是否启用;
+      if (启用?) then (是)
+        :获取Agent组件;
+        if (Agent组件存在?) then (是)
+          :执行Agent路由决策;
+          :获取执行顺序;
+        else (否)
+          :使用默认执行顺序;
+        endif
+      else (否)
+        :使用默认执行顺序;
+      endif
+      note right
+        默认顺序: [knowledge_graph, rag, 
+        memory, agent, continuous_learning]
+        动态路由基于查询类型决定
+        先记忆后RAG或先RAG后记忆
+      end note
+    }
+    
+    partition "组件执行" {
+      while (还有未执行的组件?) is (是)
+        :获取执行顺序中的下一个组件;
+        if (组件已启用?) then (是)
+          :检查组件超时设置;
+          :记录组件执行开始时间;
+          :执行组件(component.execute);
+          :记录组件执行时间;
+          :更新组件指标;
+          :合并组件结果到上下文;
+        else (否)
+          :跳过禁用组件;
+        endif
+      endwhile
+    }
+    
+    partition "响应生成" {
+      :获取Agent最终答案;
+      if (无Agent答案?) then (是)
+        :从RAG结果构建响应;
+      endif
+      :估算token使用;
+      :计算响应质量得分;
+      :计算置信度得分;
+      :构建元数据;
+      :构建最终响应;
+    }
+    
+    partition "持续学习触发" {
+      :检查持续学习是否启用;
+      if (启用?) then (是)
+        :获取持续学习组件;
+        if (组件存在且已初始化?) then (是)
+          :构建自动反馈数据;
+          :执行持续学习组件;
+        endif
+      endif
+    }
+    
+    :记录请求完成;
+    :返回响应给用户;
+  }
+  
+  partition "用户反馈处理" {
+    :检查是否有新用户反馈;
+    if (有反馈?) then (是)
+      :获取持续学习组件;
+      if (组件存在?) then (是)
+        :添加用户反馈;
+        :检查是否满足学习条件;
+        if (满足?) then (是)
+          :触发后台学习任务;
+        endif
+      endif
+    endif
+  }
+endwhile
+
+partition "应用清理" {
+  :标记应用为未初始化;
+  :清理工具链组件;
+  :卸载所有模型;
+  :优化资源使用;
+  :关闭数据库连接;
+  :清理缓存;
+}
+
+stop
+
+@enduml

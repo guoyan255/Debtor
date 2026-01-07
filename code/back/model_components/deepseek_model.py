@@ -33,7 +33,5 @@ class DeepSeekLLM:
             base_url=self.DEEPSEEK_URL,
             api_key=self.DEEPSEEK_KEY,
             # 可根据需要添加其他参数，比如温度、最大令牌数等
-            temperature=0.7,
-            max_tokens=2048
         )
     

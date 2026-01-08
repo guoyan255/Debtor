@@ -7,7 +7,7 @@ response = llm.invoke(prompt)
 print(response.content)
 '''
 
-from graph import Graph
+from graph_test import Graph
 
 graph1 = Graph()
 

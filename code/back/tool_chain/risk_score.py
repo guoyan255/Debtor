@@ -1,6 +1,6 @@
 from model_components.deepseek_model import DeepSeekLLM
 from state import State
-
+import json
 class risk_score:
 
     def __init__(self):
@@ -139,7 +139,29 @@ class risk_score:
 }
         """
 
-    def assess_risk(self, state: State) -> dict:
-        prompt = self.prompt_template.format(text=state["text"])
+    # def assess_risk(self, state: State) -> dict:
+    #     prompt = self.prompt_template.format(text=state["text"])
+    #     response = self.llm.invoke(prompt)
+    #     return {"text": state["text"] + "risk_score", "response": response.content}
+
+    def assess_risk(self, user_data: dict) -> dict:
+        # 创建一个替换字典
+        replacements = {
+            "{user_id}": user_data.get("user_id", ""),
+            "{user_name}": user_data.get("user_name", ""),
+            "{communication_records}": json.dumps(user_data.get("communication_records", []), ensure_ascii=False),
+            "{loan_applications}": json.dumps(user_data.get("loan_applications", []), ensure_ascii=False),
+            "{credit_inquiries}": json.dumps(user_data.get("credit_inquiries", []), ensure_ascii=False),
+            "{location_data}": json.dumps(user_data.get("location_data", []), ensure_ascii=False),
+            "{device_info}": json.dumps(user_data.get("device_info", {}), ensure_ascii=False),
+            "{network_data}": json.dumps(user_data.get("network_data", {}), ensure_ascii=False),
+            "{text_content}": user_data.get("text_content", "")
+        }
+        
+        # 逐个替换
+        prompt = self.prompt_template
+        for key, value in replacements.items():
+            prompt = prompt.replace(key, value)
+        
         response = self.llm.invoke(prompt)
-        return {"text": state["text"] + "risk_score", "response": response.content}
+        return {"response": response.content, "user_data": user_data}

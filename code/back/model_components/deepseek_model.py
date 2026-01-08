@@ -1,6 +1,7 @@
 from langchain_deepseek import ChatDeepSeek
 from dotenv import load_dotenv
 import os
+from core_abstract.model_type import ModelType
 
 
 class DeepSeekLLM:
@@ -17,6 +18,7 @@ class DeepSeekLLM:
         # 获取环境变量，并做非空校验
         self.DEEPSEEK_KEY = os.getenv('DEEPSEEK_KEY')
         self.DEEPSEEK_URL = os.getenv('DEEPSEEK_URL')
+        self.model_type = ModelType.FOUNDATION
         
         if not self.DEEPSEEK_KEY:
             raise ValueError("环境变量 DEEPSEEK_KEY 未配置，请检查 .env 文件")

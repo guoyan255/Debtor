@@ -1,0 +1,251 @@
+@startuml sequence_diagram_complete
+skinparam maxmessagesize 60
+skinparam responseMessageBelowArrow true
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam lifelineStrategy solidline
+skinparam defaultFontSize 13
+skinparam sequenceParticipant underline
+
+actor User
+participant "VerticalDomainApplication" as app
+participant "HealthChecker" as health_checker
+participant "ResourceManager" as resource_manager
+participant "RequestProcessor" as request_processor
+participant "ApplicationContext" as context
+participant "ToolChainManager" as toolchain_manager
+participant "ModelManager" as model_manager
+participant "AgentComponent" as agent_component
+participant "KnowledgeGraphComponent" as kg_component
+participant "RAGComponent" as rag_component
+participant "MemorySystemComponent" as memory_component
+participant "ContinuousLearningComponent" as learning_component
+participant "FoundationModel" as foundation_model
+participant "KnowledgeGraphModel" as kg_model
+participant "EmbeddingModel" as embedding_model
+participant "RerankerModel" as reranker_model
+participant "LearningHistoryManager" as learning_history
+
+User -> app: process_request(request)
+activate app
+
+app -> health_checker: perform_health_check()
+activate health_checker
+
+health_checker -> health_checker: check time interval
+alt time for health check
+    health_checker -> health_checker: _check_resources()
+    health_checker -> model_manager: health_check()
+    activate model_manager
+    model_manager -> model_manager: Check model status
+    model_manager --> health_checker: model_status
+    deactivate model_manager
+    
+    health_checker -> toolchain_manager: health_check()
+    activate toolchain_manager
+    toolchain_manager -> toolchain_manager: Check component status
+    toolchain_manager --> health_checker: component_status
+    deactivate toolchain_manager
+    
+    health_checker -> health_checker: Determine overall status
+    health_checker --> app: health_status
+else skip health check
+    health_checker --> app: use cached health_status
+end
+deactivate health_checker
+
+app -> resource_manager: check_scaling_needs()
+activate resource_manager
+
+resource_manager -> resource_manager: monitor_resources()
+resource_manager -> resource_manager: check thresholds
+alt scale needed
+    resource_manager -> resource_manager: scale_resources(scale_action)
+    resource_manager --> app: scaling_result
+else no scale needed
+    resource_manager --> app: no scaling needed
+end
+deactivate resource_manager
+
+app -> request_processor: process_request(request)
+activate request_processor
+
+request_processor -> request_processor: _record_request_start(request_id, request, start_time)
+request_processor -> context: create ApplicationContext()
+activate context
+
+context --> request_processor: initialized context
+deactivate context
+
+request_processor -> request_processor: Set context data\n(request_id, query, user_id,\ndomain, documents, etc.)
+request_processor -> request_processor: Get components from app
+request_processor -> request_processor: Get dynamic routing setting
+
+request_processor -> request_processor: _determine_execution_order(context, components, dynamic_routing_enabled)
+activate request_processor
+
+request_processor -> agent_component: Check if agent exists
+alt agent exists
+    request_processor -> agent_component: execute(context.copy())
+    activate agent_component
+    
+    agent_component -> agent_component: _determine_execution_order(query, context)
+    agent_component --> request_processor: execution_order
+    deactivate agent_component
+else no agent
+    request_processor -> request_processor: Use default_order\n['knowledge_graph', 'rag',\n'memory', 'agent',\n'continuous_learning']
+end
+request_processor --> request_processor: execution_order
+deactivate request_processor
+
+request_processor -> request_processor: _execute_components_in_order(context, components, execution_order)
+activate request_processor
+
+loop for each component_type in execution_order
+    request_processor -> toolchain_manager: get_component(component_type)
+    toolchain_manager --> request_processor: component
+    
+    request_processor -> request_processor: _execute_component(component, context)
+    activate request_processor
+    
+    request_processor -> component: Check if enabled
+    alt component enabled
+        request_processor -> component: execute(context.data.copy())
+        activate component
+        
+        alt component_type == knowledge_graph
+            component -> kg_model: Get from context
+            kg_model -> kg_model: Check if loaded
+            alt kg_model loaded
+                component -> component: _extract_and_store_knowledge(context)
+                activate component
+                component -> learning_history: Extract knowledge from documents
+                component -> kg_model: add_entity(entity)
+                component -> kg_model: add_relation(relation)
+                component --> request_processor: kg_entities, kg_relations
+                deactivate component
+                
+                component -> component: _query_relevant_knowledge(query, context)
+                activate component
+                component -> learning_history: Get cache
+                alt cache hit
+                    component --> request_processor: cached_kg_context
+                else cache miss
+                    component -> kg_model: execute_query()
+                    kg_model -> kg_model: process query
+                    kg_model --> component: entities, relations
+                    component -> component: _build_knowledge_context()
+                    component --> request_processor: kg_context
+                end
+                deactivate component
+            else kg_model not loaded
+                component --> request_processor: skip KG processing
+            end
+        else if component_type == rag
+            component -> model_manager: Get embedding_model, reranker_model
+            embedding_model -> embedding_model: Check if loaded
+            reranker_model -> reranker_model: Check if loaded
+            
+            component -> component: _enhance_query_with_memories()
+            component -> component: _enhance_query_with_knowledge()
+            
+            component -> component: _strategy.retrieve(enhanced_query)
+            activate component
+            alt strategy == hybrid
+                component -> component: semantic_strategy.retrieve()
+                component -> component: keyword_strategy.retrieve()
+                component -> component: _fuse_results()
+            else other strategy
+                component -> component: strategy.retrieve()
+            end
+            component --> request_processor: retrieval_results
+            deactivate component
+            
+            component -> component: Apply reranking
+            component -> reranker_model: rerank(query, documents)
+            reranker_model -> reranker_model: Process reranking
+            reranker_model --> component: reranked_results
+            component --> request_processor: updated retrieval_results
+        else if component_type == agent
+            component -> model_manager: Get foundation_model
+            foundation_model -> foundation_model: Check if loaded
+            
+            loop for max_steps
+                component -> component: _build_agent_prompt()
+                component -> foundation_model: generate(prompt)
+                foundation_model -> foundation_model: Process generation
+                foundation_model --> component: response
+                
+                component -> component: _parse_agent_response()
+                alt action == "Final Answer"
+                    component --> request_processor: agent_final_answer
+                    break
+                end
+            end
+        else if component_type == memory
+            component -> model_manager: Get embedding_model
+            embedding_model -> embedding_model: Check if loaded
+            
+            component -> component: _recall_memories(query)
+            component -> component: _create_memory_entry()
+            component -> component: _update_memory_store()
+            component -> component: _apply_forgetting_mechanism()
+            component --> request_processor: relevant_memories
+        else if component_type == continuous_learning
+            component -> component: _should_learn(current_time)
+            alt time to learn
+                component -> learning_history: get_feedback_for_learning()
+                learning_history --> component: feedback_data
+                
+                component -> component: _perform_learning(feedback_data)
+                activate component
+                component -> component: _analyze_feedback_batch()
+                component -> model_manager: Get models for update
+                component -> component: _evaluate_learning_effect()
+                component --> request_processor: learning_executed
+                deactivate component
+            end
+        end
+        
+        component --> request_processor: updated_context
+        deactivate component
+    else component disabled
+        request_processor --> request_processor: skip component
+    end
+    
+    request_processor --> request_processor: updated context
+    deactivate request_processor
+end
+
+request_processor -> request_processor: _generate_response(context, start_time)
+activate request_processor
+
+request_processor -> request_processor: Get agent_final_answer or build response
+request_processor -> request_processor: _estimate_token_usage()
+request_processor -> request_processor: _calculate_response_quality()
+request_processor -> request_processor: _calculate_confidence_score()
+request_processor -> request_processor: Build metadata
+request_processor --> app: response
+deactivate request_processor
+
+app -> app: _trigger_continuous_learning(context, response)
+activate app
+
+app -> learning_component: Check if enabled
+alt learning enabled
+    app -> learning_component: execute(context)
+    activate learning_component
+    
+    learning_component -> learning_component: Build feedback_data
+    learning_component -> learning_history: add_feedback(feedback_data)
+    learning_history --> learning_component: success
+    
+    learning_component --> app: learning triggered
+    deactivate learning_component
+end
+deactivate app
+
+app --> User: return response
+deactivate app
+
+@enduml

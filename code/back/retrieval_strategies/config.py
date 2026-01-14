@@ -1,26 +1,47 @@
 import os
 from llama_index.core import Settings, StorageContext
-from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 import qdrant_client
 
+
 class RAGConfig:
-    def __init__(self, collection_name="bank_data_collection", storage_path="./qdrant_storage"):
+    def __init__(
+        self,
+        collection_name: str = "risk_rules_collection",
+        storage_path: str = "./qdrant_storage"
+    ):
         self.collection_name = collection_name
         self.storage_path = storage_path
+
+        # 1. 配置 Embedding（本地模型，不使用 LLM）
         self._setup_settings()
-        self.client = qdrant_client.QdrantClient(path=self.storage_path)
+
+        # 2. 初始化 Qdrant（本地持久化模式）
+        self.client = qdrant_client.QdrantClient(
+            path=self.storage_path
+        )
+
         self.vector_store = QdrantVectorStore(
-            client=self.client, 
+            client=self.client,
             collection_name=self.collection_name
         )
 
     def _setup_settings(self):
-        """配置全局模型设置"""
-        # 如果需要使用其他模型，可以在此处修改
-        Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-        # 如果不需要 LLM 生成回答，只需检索，可以不配置 Settings.llm
+        """
+        仅配置向量化模型，显式关闭 LLM
+        """
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-base-zh-v1.5"
+        )
+
+        # 明确关闭 LLM，防止 llamaindex 任何隐式调用
+        Settings.llm = None
 
     def get_storage_context(self):
-        """生成存储上下文"""
-        return StorageContext.from_defaults(vector_store=self.vector_store)
+        """
+        返回 Qdrant 存储上下文
+        """
+        return StorageContext.from_defaults(
+            vector_store=self.vector_store
+        )

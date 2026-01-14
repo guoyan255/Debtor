@@ -1,0 +1,29 @@
+{
+    "rules": [
+        {
+            "rule_name": "断缴期突击借贷规则",
+            "logic_expression": "公积金账户状态为'未缴纳'或'冻结' AND 近12个月申请贷款次数 >= 4",
+            "risk_verdict": "高风险背债人"
+        },
+        {
+            "rule_name": "低学历高负债空壳包装规则",
+            "logic_expression": "学历为高中/中专 AND 近12个月申请贷款次数 >= 4 AND (公积金账户状态为'未缴纳'或'冻结' OR 手机在网时长 < 6个月)",
+            "risk_verdict": "高风险背债人"
+        },
+        {
+            "rule_name": "新号突击多头借贷规则",
+            "logic_expression": "手机在网时长 < 6个月 AND 近12个月申请贷款次数 >= 4",
+            "risk_verdict": "疑似背债人"
+        },
+        {
+            "rule_name": "高负债断缴核心矛盾规则",
+            "logic_expression": "近12个月申请贷款次数 >= 5 AND 公积金账户状态为'未缴纳'或'冻结'",
+            "risk_verdict": "高风险背债人"
+        },
+        {
+            "rule_name": "新号低学历突击规则",
+            "logic_expression": "学历为高中/中专 AND 手机在网时长 < 6个月 AND 近12个月申请贷款次数 >= 4",
+            "risk_verdict": "疑似背债人"
+        }
+    ]
+}

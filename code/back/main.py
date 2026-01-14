@@ -2,14 +2,15 @@ import pandas as pd
 import os
 from tool_chain.state import State
 from tool_chain.rule_mining import rule_mining  # 确保你的类名和文件名正确
+from tool_chain.feature_mining import feature_mining
 
 def run_analysis(file_path: str):
     # --- 1. 读取 CSV 数据 ---
     try:
-        # 只读取前 20 条，dtype=str 避免长数字被截断
+        # 只读取前 n 条，dtype=str 避免长数字被截断
         df = pd.read_csv(
             file_path,
-            nrows=30,
+            nrows=50,
             dtype=str,
             encoding="gbk"
         )
@@ -54,6 +55,17 @@ def run_analysis(file_path: str):
     else:
         print("未发现显著新特征或模型未返回结果。")
     print("="*68)
+
+
+    '''miner = feature_mining()
+    final_state = miner.mine_features(state)
+    # --- 5. 输出挖掘出的新特征 ---
+    print("\n" + "="*30 + " 挖掘结果 " + "="*30)
+    if final_state["new_feature"]:
+        print(final_state["new_feature"])
+    else:
+        print("未发现显著新特征或模型未返回结果。")
+    print("="*68)'''
 
 if __name__ == "__main__":
     # 指定你的文件名 1.csv

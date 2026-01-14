@@ -4,7 +4,7 @@ from typing_extensions import TypedDict
 
 class State(TypedDict):
     
-    data: List[List[Dict]]  #输入数据
+    data: List[Dict]  #输入数据
     text: str #处理后的数据
     new_feature: str #新特征
     new_rule: str #新规则

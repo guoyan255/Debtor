@@ -13,11 +13,11 @@ class test2:
         deepseek_client = DeepSeekLLM()
         self.llm = deepseek_client.llm
         self.prompt_template = """
-        你好，DeepSeek！请介绍一下你自己。
+        你好，DeepSeek！{text}。
         """
 
     def test(self, state: State) -> dict:
-        prompt = self.prompt_template
+        prompt = self.prompt_template.format(text=state["text"])
         response = self.llm.invoke(prompt)
         return {"text": state["text"] + "b", "response": response.content}
     

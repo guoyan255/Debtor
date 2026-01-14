@@ -13,4 +13,4 @@ graph1 = Graph()
 
 workflow = graph1.get_graph()
 
-print(workflow.compile().invoke({"text": "1"}))
+print(workflow.compile().invoke({"text": "请介绍下上海"}))

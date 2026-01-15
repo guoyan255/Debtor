@@ -45,19 +45,7 @@ def run_analysis(file_path: str):
     # --- 3. 调用大模型分析节点 ---
     print(f"正在分析 {len(state['data'])} 条用户数据，寻找隐藏的‘背债人’特征规则...")
     
-    miner = rule_mining()
-    final_state = miner.mine_rules(state)
-
-    # --- 4. 输出挖掘出的新规则 ---
-    print("\n" + "="*30 + " 挖掘结果 " + "="*30)
-    if final_state["new_rule"]:
-        print(final_state["new_rule"])
-    else:
-        print("未发现显著新特征或模型未返回结果。")
-    print("="*68)
-
-
-    '''miner = feature_mining()
+    miner = feature_mining()
     final_state = miner.mine_features(state)
     # --- 5. 输出挖掘出的新特征 ---
     print("\n" + "="*30 + " 挖掘结果 " + "="*30)
@@ -65,7 +53,7 @@ def run_analysis(file_path: str):
         print(final_state["new_feature"])
     else:
         print("未发现显著新特征或模型未返回结果。")
-    print("="*68)'''
+    print("="*68)
 
 if __name__ == "__main__":
     # 指定你的文件名 1.csv

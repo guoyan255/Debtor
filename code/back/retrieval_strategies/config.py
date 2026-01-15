@@ -31,8 +31,11 @@ class RAGConfig:
         """
         仅配置向量化模型，显式关闭 LLM
         """
+        self.local_model_path = r"E:\embeddingmodel\bge-base-zh" 
+        
         Settings.embed_model = HuggingFaceEmbedding(
-            model_name="BAAI/bge-base-zh-v1.5"
+            model_name=self.local_model_path,
+            trust_remote_code=True
         )
 
         # 明确关闭 LLM，防止 llamaindex 任何隐式调用

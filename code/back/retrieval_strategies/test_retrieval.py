@@ -5,9 +5,9 @@ def main():
     config = RAGConfig(collection_name="risk_rules_collection")
     retriever = DataRetriever(config)
 
-    query = "近12个月 多次贷款 公积金 断缴"
+    query = "公积金 断缴"
 
-    results = retriever.search_rules(query_text=query, top_k=5)
+    results = retriever.search_rules(query_text=query, top_k=3)
 
     print(f"查询：{query}\n")
     for r in results:

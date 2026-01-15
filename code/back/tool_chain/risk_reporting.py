@@ -1,5 +1,5 @@
 from model_components.deepseek_model import DeepSeekLLM
-from state import State
+from tool_chain.state import State
 
 class risk_reporting:
 
@@ -8,61 +8,46 @@ class risk_reporting:
         self.llm = deepseek_client.llm
         self.prompt_template = """
 你是一个金融风控AI，根据风险评分结果生成结构化风险提示报告。
+### 角色设定
+你是一个专业的金融风控AI系统，负责汇总全链路分析结果，生成最终的《背债风险评估报告》。
 
-## 报告格式（必须严格遵循）：
+### 输入数据源
+1. **分析数据全文**：{user_data}
+2. **命中风险特征**：{user_features}
+3. **风控规则依据**：{user_rules}
+4. **风险评分与原因简述**：{user_risk}
+
+### 报告生成逻辑与规则
+1. **风险等级判定**：
+   - 80-100分：高风险
+   - 55-79分：中风险
+   - 0-54分：低风险
+2. **内容抽取要求**：
+   - **用户名**：从“分析数据全文”中提取。
+   - **已知特征**：整合“命中风险特征”，必须包含具体的时间、地点或关键行为。
+   - **挖掘新特征**：结合“风险评分原因”，标注该用户是否命中了潜在的背债人行为模式。
+   - **特征依据**：将“风控规则依据”与具体的数据事实（如通话、入职时间、借贷频率）一一对应。
+
+### 约束要求
+- **严禁废话**：输出内容必须以“风险提示报告”开头，以“特征依据”内容结尾。
+- **严禁解释**：不要输出“收到”、“好的”或任何分析过程。
+- **格式一致**：严格遵循下方示例格式。
+
+---
+### 输出格式模板
+
 风险提示报告
-用户ID：[用户ID]
-用户名：[用户名]
-风险等级：[风险等级]（评分[分数]分）
+用户名：[姓名]
+风险等级：[高/中/低]风险（评分[具体分数]分）
+
 命中特征清单：
+1. 已知特征：[特征A（时间/行为/数据）；特征B...]
+3. 特征规则：- [依据1：数据事实+规则逻辑]; - [依据2：数据事实+规则逻辑]
 
-已知特征：[特征1描述]、[特征2描述]、[特征3描述]；
-
-挖掘新特征：[新特征1]（命中/未命中）、[新特征2]（命中/未命中）；
-
-特征依据：- [依据1]；- [依据2]；- [依据3]
-
-text
-
-## 规则说明：
-
-### 1. 风险等级确定
-- 80-100分：高风险
-- 50-79分：中风险
-- 0-54分：低风险
-
-### 2. 特征描述要求
-- 已知特征：必须包含具体时间、地点、行为等信息
-- 新特征：标注（命中）或（未命中）
-- 特征依据：每条依据前加"- "，以";"分隔
-
-## 输入数据格式：
-```json
-{
-  "user_id": "用户ID",
-  "user_name": "用户名",
-  "risk_score": 0-100,
-  "known_features": ["特征描述1", "特征描述2"],
-  "new_features": [
-    {"name": "特征名", "is_hit": true/false}
-  ],
-  "evidences": ["证据1", "证据2", "证据3"]
-}
-输出示例：
-text：
-风险提示报告
-用户ID：XXX123456
-用户名：XXX
-风险等级：高风险（评分89分）
-命中特征清单：
-1. 已知特征：高风险区域来源（XX背债村）、异常离婚（2025年3月离婚，原因未明确）、短期内异地贷款（2025年4-5月上海、广州各1次，间隔25天）；
-2. 挖掘新特征：重大疾病+异常离婚+3个月内与中介通话≥2次（命中）、高流动公司入职后30天内异地贷款（命中）；
-3. 特征依据：- 通话记录含"包装资质背债"关键词，通话对象为已知背债中介；- 2025年3月10日入职XX公司（人员流动率90%，属高流动公司），4月5日申请异地贷款（间隔26天，符合时序规则）
-
-请根据输入数据生成报告，严格保持格式一致。
-        """
+"""
 
     def warn_risk(self, state: State) -> dict:
-        prompt = self.prompt_template.format(text=state["text"])
-        response = self.llm.invoke(prompt)
-        return {"text": state["text"] + "risk_warning", "response": response.content}
+              
+      prompt = self.prompt_template.format(user_data=state["analysis_data"],user_features=state["feature"],user_rules=state["rule"],user_risk=state["risk"])
+      response = self.llm.invoke(prompt)
+      return {"response": state["response"] + "已经执行risk_reporting", "report": response.content}

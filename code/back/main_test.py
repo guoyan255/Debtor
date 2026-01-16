@@ -3,7 +3,6 @@ from tool_chain.state import State
 import os
 import sys
 
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 
 graph = risk_graph()
@@ -42,6 +41,14 @@ print(final_state.get("risk", "未生成评分"))
 print("\n【3. 系统执行日志 (Response)】")
 print(final_state.get("response", "无响应信息"))
     
+
+print("\n【4. 匹配特征 (feature)】")
+print(final_state.get("feature", "无响应信息"))
+
+print("\n【5. 匹配规则 (rule)】")
+print(final_state.get("rule", "无响应信息"))
+
+
 print("\n" + "="*74)
 
 try:

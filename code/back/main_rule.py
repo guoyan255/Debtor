@@ -2,7 +2,6 @@ import pandas as pd
 import os
 from tool_chain.state import State
 from tool_chain.rule_mining import rule_mining  # 确保你的类名和文件名正确
-from tool_chain.feature_mining import feature_mining
 
 def run_analysis(file_path: str):
     # --- 1. 读取 CSV 数据 ---
@@ -43,7 +42,7 @@ def run_analysis(file_path: str):
     }
 
     # --- 3. 调用大模型分析节点 ---
-    print(f"正在分析 {len(state['data'])} 条用户数据，寻找隐藏的‘背债人’特征规则...")
+    print(f"正在分析 {len(state['data'])} 条用户数据，寻找隐藏的‘背债人’规则...")
     
     miner = rule_mining()
     final_state = miner.mine_rules(state)

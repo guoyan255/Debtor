@@ -3,7 +3,7 @@ from llama_index.core import Settings, StorageContext
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 import qdrant_client
-
+from llama_index.core.llms import MockLLM
 
 class RAGConfig:
     def __init__(
@@ -39,7 +39,7 @@ class RAGConfig:
         )
 
         # 明确关闭 LLM，防止 llamaindex 任何隐式调用
-        Settings.llm = None
+        Settings.llm = MockLLM()
 
     def get_storage_context(self):
         """

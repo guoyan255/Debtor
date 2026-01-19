@@ -12,33 +12,26 @@ from retrieval_strategies.config import RAGConfig
 class risk_graph:
 
     def __init__(self):
+        config = RAGConfig(collection_name="risk_rules_collection")
+        self.node_data_loader = data_loader()
+        self.node_feature_matching = feature_matching()
+        self.node_retrieval_node = RetrievalNode(config)
+        self.node_risk_score = risk_score()
+        self.node_risk_reporting = risk_reporting()
         self.graph = StateGraph(State)
 
-    def get_graph(self) -> dict:
+    def get_graph(self):
 
-        config = RAGConfig(collection_name="risk_rules_collection")
-
-        node_data_loader = data_loader()
-        node_feature_matching = feature_matching()
-        node_retrieval_node = RetrievalNode(config)
-        node_risk_score = risk_score()
-        node_risk_reporting = risk_reporting()
-
-
-        self.graph.add_node("data_loader", node_data_loader.load_data)
-        self.graph.add_node("feature_matching", node_feature_matching.match_features)
-        self.graph.add_node("retrieval_node", node_retrieval_node.retrieve_rules)
-        self.graph.add_node("risk_score", node_risk_score.assess_risk)
-        self.graph.add_node("risk_reporting", node_risk_reporting.warn_risk)
+        self.graph.add_node("data_loader", self.node_data_loader.load_data)
+        self.graph.add_node("feature_matching", self.node_feature_matching.match_features)
+        self.graph.add_node("retrieval_node", self.node_retrieval_node.retrieve_rules)
+        self.graph.add_node("risk_score", self.node_risk_score.assess_risk)
+        self.graph.add_node("risk_reporting", self.node_risk_reporting.warn_risk)
 
         self.graph.add_edge(START, "data_loader")
         self.graph.add_edge("data_loader", "feature_matching")
         self.graph.add_edge("feature_matching", "retrieval_node")
         self.graph.add_edge("retrieval_node", "risk_score")
         self.graph.add_edge("risk_score", "risk_reporting")
-
-
-
-
 
         return self.graph

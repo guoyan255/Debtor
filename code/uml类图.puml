@@ -1,0 +1,162 @@
+@startuml class_diagram_complete
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam classFontSize 12
+skinparam classFontStyle Bold
+skinparam packageStyle rectangle
+skinparam stereotypeFontSize 11
+skinparam noteFontSize 12
+
+package "model_components"{
+    class deepseek_model {
+        -model_name: str
+        -DEEPSEEK_KEY: str
+        -DEEPSEEK_URL: str
+
+        +_init_llm(): ChatDeepSeek
+    }
+}
+
+package "retrieval_strategies"{
+    class config {
+        -collection_name: str
+        -storage_path: str
+        -_setup_settings: str
+        -client: QdrantClient
+        -vector_store: QdrantVectorStore
+
+        -_init_(collection_name: str,storage_path: str): void
+        _setup_settings(): void
+        get_storage_context(): StorageContext
+    }
+    class ingestion {
+        -config: config
+
+        -_init_(config: config): void
+        +ingest_csv(file_path: str): VectorStoreIndex
+        +ingest_rules(file_path: str): VectorStoreIndex
+    }
+    class retrieval {
+        -config: config
+        -index: VectorStoreIndex
+
+        -_init_(config: config): void
+        +search_rules(query_text: str,top_k: int): list
+    }
+}
+
+package "main_application"{
+    class state {
+        data: List[Dict]  #输入数据
+        analysis_data: str #要分析的用户数据
+        text: str #处理后的数据
+        new_feature: str #新特征
+        new_rule: str #新规则
+        feature: str #匹配到的相关特征特征
+        feature_matching: str #特征匹配结果
+        rule : str #检索出的相关规则
+        rule_matching : str #规则匹配结果
+        report: str #风险报告
+        risk: str #风险评分
+        response: str #回答
+    }
+    class data_loader{
+        +base_dir: str
+        -file_path: str
+
+        -_init_(file_path: str): void
+        +load_data(state: State): dict
+    }
+    class feature_matching{
+        +deepseek_client: DeepSeekLLM
+        -llm: ChatDeepSeek
+        -prompt_template: Literal
+
+        -_init_(): void
+        +match_feature(state: State): dict
+    }
+    class retrieval_node{
+        -data_retriever:DataRetriever
+
+        -__init__(config: config): void
+        +retrieve_rules(state: State): dict
+    }
+    class risk_score{
+        +deepseek_client: DeepSeekLLM
+        -llm: ChatDeepSeek
+        -prompt_template: Literal
+
+        -_init_(): void
+        +assess_risk(state: State): dict
+    }
+    class risk_reporting{
+        +deepseek_client: DeepSeekLLM
+        -llm: ChatDeepSeek
+        -prompt_template: Literal
+
+        -_init_(): void
+        +warn_risk(state: State): dict
+    }
+    class rule_mining{
+        +deepseek_client: DeepSeekLLM
+        -llm: ChatDeepSeek
+        -prompt_template: Literal
+
+        -_init_(): void
+        +mine_rule(state: State): dict
+    }
+    class feature_mining{
+        +deepseek_client: DeepSeekLLM
+        -llm: ChatDeepSeek
+        -prompt_template: Literal
+
+        -_init_(): void
+        +mine_features(state: State): dict
+    }
+}
+
+class risk_graph{
+    +config: config
+    -node_data_loader: data_loader
+    -node_feature_matching: feature_matching
+    -node_retrieval_node: retrieval
+    -node_risk_score: risk_score
+    -node_risk_reporting: risk_reporting
+    -graph:StateGraph
+
+    -_init_(): void
+    +get_graph(): StateGraph
+}
+
+
+
+
+deepseek_model o-- feature_matching : "使用"
+deepseek_model o-- risk_score : "使用"
+deepseek_model o-- risk_reporting : "使用"
+deepseek_model o-- rule_mining : "使用"
+deepseek_model o-- feature_mining : "使用"
+
+config o-- ingestion : "使用"
+config o-- retrieval : "使用"
+config o-- retrieval_node : "使用"
+config o-- risk_graph : "使用"
+
+retrieval_node o-- retrieval : "使用"
+
+risk_graph o-- data_loader : "创建"
+risk_graph o-- feature_matching : "创建"
+risk_graph o-- retrieval_node : "创建"
+risk_graph o-- risk_score : "创建"
+risk_graph o-- risk_reporting : "创建"
+
+data_loader ..> state : "读写"
+feature_matching ..> state : "读写"
+retrieval_node ..> state : "读写"
+risk_score ..> state : "读写"
+risk_reporting ..> state : "读写"
+rule_mining ..> state : "读写"
+feature_mining ..> state : "读写"
+risk_graph ..> state : "读写"
+
+@enduml

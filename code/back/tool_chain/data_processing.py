@@ -1,105 +1,384 @@
-from model_components.deepseek_model import DeepSeekLLM
-from state import State
+from __future__ import annotations
+
 import json
+import os
+import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+from tool_chain.state import State
+
 
 class data_processing:
 
-    def __init__(self):
-        deepseek_client = DeepSeekLLM()
-        self.llm = deepseek_client.llm
-        self.prompt_template = """
-你是银行风控领域的资深数据标准化专家，专注于背债人判定场景的CSV数据标准化处理，严格遵循以下规则完成非标数据智能化解析与标准化：
+    def __init__(self, output_path: Optional[str] = None) -> None:
+        # 关键字段缺失判为无效
+        self.required_fields = {"客户号", "申请编号", "证件号", "手机号"}
+        self.output_path = output_path
 
-【核心目标】
-将CSV中的非标数据基于语义理解完成标准化，消除数据噪声，输出统一、规范、可直接用于背债人判定的结构化数据，替代传统ETL硬规则配置。
+        # 精确规则
+        self.field_rules: Dict[str, str] = {
+            "客户号": "numeric_non_negative",
+            "申请编号": "numeric_non_negative",
+            "产品类型": "cn_text",
+            "申请日期": "date",
+            "申请时间": "datetime",
+            "系统流水号": "serial_5",
+            "证件号": "id_card",
+            "手机号": "phone",
+            "联系人手机号": "phone",
+            "公司名称": "cn_text",
+            "公司地址（省市区合并）": "address",
+            "公司地址 1": "address",
+            "公司地址 2": "address",
+            "公司地址 3": "address",
+            "家庭地址（省市区合并）": "address",
+            "家庭地址 1": "address",
+            "家庭地址 2": "address",
+            "家庭地址 3": "address",
+            "户籍地址（省市区合并）": "address",
+            "户籍地址 1": "address",
+            "户籍地址 2": "address",
+            "户籍地址 3": "address",
+            "手机号归属地": "address",
+            "gps 地址（省市合并）": "gps_address",
+            "手机是否实名": "bool_01",
+            "申请时 ip 是否在境外": "bool_01",
+            "婚姻状态": "marriage_code",
+            "学历层次": "cn_text",
+            "成为我行客户距今天数": "numeric_non_negative",
+        }
 
-【CSV数据解析规则】
-1. 字段映射（按列序，背债人判定核心字段）：
-   列1:年龄, 列2:性别, 列3:婚姻状况, 列4:学历, 列5:地址, 
-   列6:公积金是否缴纳, 列7:公积金缴纳基数, 列8:公积金缴纳时长(月), 列9:公积金断缴时长(月),
-   列10:征信逾期次数, 列11:征信逾期最长天数, 列12:征信负债总额(元), 列13:征信信贷查询次数(近3个月),
-   列14:运营商在网时长(月), 列15:运营商是否异地使用, 列16:运营商近6个月通话次数,
-   列17:百融多头借贷平台数, 列18:百融多头借贷金额(元), 列19:百融近1个月新增借贷次数；
-2. 分隔符：默认逗号分隔，支持自动识别制表符/空格分隔的异常情况；
-3. 空值/噪声识别：
-   - 空值：NULL、-、空字符串、无、未知、未填写 → 统一标注为null；
-   - 噪声数据：乱码、特殊符号、明显异常值（如年龄999、负债-1000）→ 标注为null并记录噪声类型；
-4. 解析约束：仅提取上述19个核心字段，无对应列则标注为null。
+        # “数字，负值为 null” 统一规则
+        negative_to_null = [
+            "公积金账户当前状态",
+            "当前缴存基数",
+            "当月个人缴存比例",
+            "当月个人缴存金额",
+            "当前账户余额",
+            "最近连续缴存月份",
+            "累计缴存次数",
+            "当前缴存单位状态",
+            "当月单位缴存比例",
+            "当月单位缴存金额",
+            "当前单位性质",
+            "近 12 个自然月个人缴存平均比例",
+            "近 12 个自然月单位缴存平均比例",
+            "最近一次缴存距今时长（月）",
+            "最新公积金账号开户距今时长",
+            "最新公积金账号总缴缴时长",
+            "初次缴存距今时长（月）",
+            "个人与单位缴存比例差值",
+            "个人与单位缴存金额差值",
+            "当月缴存总额（个人 + 单位）",
+            "社保客群标签",
+            "社保评分",
+            "是否重疾客群",
+            "是否征信白户",
+        ]
+        for f in negative_to_null:
+            self.field_rules[f] = "numeric_non_negative"
 
-【背债人场景数据标准化规则（智能化语义适配）】
-### 1. 文本类字段（语义归一化）
-- 性别：非标表述（男性、女、男式）→ 统一为「男/女/null」；
-- 婚姻状况：非标表述（离异未再婚、已婚二婚、单身）→ 统一为「已婚/未婚/离异/丧偶/null」；
-- 学历：非标表述（大专学历、本科在读、高中及以上）→ 统一为「小学/初中/高中/大专/本科/硕士/博士/无/null」；
-- 地址：非标表述（杭州市西湖区、浙江杭州、杭州市）→ 统一提取「省级+市级」（如浙江省杭州市），无省份则补充所属省份，无法识别则为null；
-- 公积金是否缴纳：非标表述（有缴纳、否、未缴）→ 统一为「是/否/null」；
-- 运营商是否异地使用：非标表述（异地、否、跨市）→ 统一为「是/否/null」。
+        # 通用关键词：含这些词且没有专门规则时，同样负值置空
+        self.default_negative_to_null_keywords = [
+            "次数",
+            "计数",
+            "金额",
+            "余额",
+            "额度",
+            "比例",
+            "比率",
+            "占比",
+            "使用率",
+            "时长",
+            "月份",
+            "月数",
+            "天数",
+            "增长率",
+            "合计",
+            "取值",
+            "最大",
+            "平均",
+        ]
 
-### 2. 数值类字段（格式归一化）
-- 年龄：非标表述（35岁、三十五、三十出头）→ 统一转为纯数字，模糊表述（约30岁）→ 标注为null；
-- 金额类（公积金基数、负债总额、多头借贷金额）：非标表述（1.5万、15千、50万元）→ 统一转为以“元”为单位的纯数字；
-- 次数/时长类（逾期次数、通话次数、在网时长）：非标表述（十余次、多次、半年）→ 量化为纯数字（半年→6），无法量化则为null；
-- 数值约束：负数、0（合理场景除外）、超范围值（年龄>120）→ 标注为null（噪声）。
+    # ---------------- 公共入口 ---------------- #
+    def process_data(self, state: State) -> Dict[str, Any]:
+        cleaned_rows: List[Dict[str, Any]] = []
+        standardization_log: List[Dict[str, Any]] = []
+        invalid_rows: List[Dict[str, Any]] = []
 
-### 3. 噪声消除规则
-- 过滤口语化冗余：如“大概逾期5次”→ 5（去除“大概”）；
-- 过滤无关描述：如“地址：浙江省杭州市（老家）”→ 浙江省杭州市（去除“老家”）；
-- 标记异常噪声：如乱码、无意义字符→ null，并记录噪声原因。
+        for row_idx, row in enumerate(state.get("data", [])):
+            cleaned, logs, invalid = self._standardize_record(row)
+            cleaned_rows.append(cleaned)
+            standardization_log.extend({"row_index": row_idx, **log} for log in logs)
+            if invalid:
+                invalid_rows.append({"row_index": row_idx, "reasons": invalid})
 
-【输出格式】（严格JSON，无额外内容，禁止注释/说明文字）
-{{
-  "raw_csv_data": "{csv_row_data}",  // 原始CSV数据透传
-  "standardized_data": {{
-    "年龄": 数字/null,
-    "性别": "男/女/null",
-    "婚姻状况": "已婚/未婚/离异/丧偶/null",
-    "学历": "小学/初中/高中/大专/本科/硕士/博士/无/null",
-    "地址": "省级+市级/null",
-    "公积金信息": {{
-      "是否缴纳": "是/否/null",
-      "缴纳基数": 数字/null,
-      "缴纳时长（月）": 数字/null,
-      "断缴时长（月）": 数字/null
-    }},
-    "征信信息": {{
-      "逾期次数": 数字/null,
-      "逾期最长天数": 数字/null,
-      "负债总额（元）": 数字/null,
-      "信贷查询次数（近3个月）": 数字/null
-    }},
-    "运营商信息": {{
-      "在网时长（月）": 数字/null,
-      "是否异地使用": "是/否/null",
-      "近6个月通话次数": 数字/null
-    }},
-    "百融多头信息": {{
-      "多头借贷平台数": 数字/null,
-      "多头借贷金额（元）": 数字/null,
-      "近1个月新增借贷次数": 数字/null
-    }}
-  }},
-  "standardization_log": [
-    {{
-      "field": "字段名",
-      "raw_value": "原始值",
-      "standardized_value": "标准化值",
-      "reason": "标准化/噪声标记理由"
-    }}
-  ],
-  "invalid_reason": "数据整体无效时填写原因，有效则为null"
-}}
+        payload = {
+            "data": cleaned_rows,
+            "standardization_log": standardization_log,
+            "invalid_rows": invalid_rows,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+        }
+        json_str = json.dumps(payload, ensure_ascii=False, indent=2)
 
-【执行要求】
-1. 仅完成数据标准化+噪声消除，不做风险特征抽取、背债人判定；
-2. 基于语义理解智能化适配非标数据，不局限于示例，覆盖所有可能的非标表述；
-3. 每个字段都需在standardization_log中记录标准化过程，噪声数据需说明噪声类型。
+        if self.output_path:
+            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+            with open(self.output_path, "w", encoding="utf-8") as f:
+                f.write(json_str)
 
-待标准化的CSV单行数据：{csv_row_data}
-数据标准化结果（仅输出JSON）：
-        """
-    def process_data(self, state: State) -> dict:
-        prompt = self.prompt_template.format(data=state["data"])
-        response = self.llm.invoke(prompt)
-        return {"text": state["text"] + "data_processing", "response": response.content}
-        
-    
+        state["data"] = cleaned_rows
+        state["standardization_log"] = standardization_log
+        state["invalid_rows"] = invalid_rows
+        state["json_payload"] = payload
+        state["json_string"] = json_str
+        state["text"] = state.get("text", "") + "data_processing"
+        state["response"] = state.get("response", "") + "数据清洗完成"
+        if self.output_path:
+            state["output_json_path"] = self.output_path
+        return state
+
+    # ---------------- 单行处理 ---------------- #
+    def _standardize_record(
+        self, record: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[str]]:
+        cleaned: Dict[str, Any] = {}
+        logs: List[Dict[str, Any]] = []
+        invalid_reasons: List[str] = []
+
+        for field, raw in record.items():
+            normalized_value, rule = self._normalize_field(field, raw)
+            cleaned[field] = normalized_value
+            logs.append(
+                {
+                    "field": field,
+                    "raw_value": raw,
+                    "standardized_value": normalized_value,
+                    "rule": rule,
+                }
+            )
+
+        for key in self.required_fields:
+            if key in record and cleaned.get(key) in (None, ""):
+                invalid_reasons.append(f"{key} 缺失或无效")
+
+        return cleaned, logs, invalid_reasons
+
+    # ---------------- 规则选择 ---------------- #
+    def _normalize_field(self, field: str, value: Any) -> Tuple[Any, str]:
+        val = self._normalize_missing(value)
+        if val is None:
+            return None, "空值标准化"
+
+        rule_type = self.field_rules.get(field)
+        if rule_type:
+            if rule_type == "numeric_non_negative":
+                return self._normalize_number(val, allow_negative=False), "非负数字"
+            if rule_type == "phone":
+                return self._normalize_phone(val), "手机号清洗"
+            if rule_type == "id_card":
+                return self._normalize_id(val), "证件号格式化"
+            if rule_type == "bool_01":
+                return self._normalize_bool01(val), "0/1 布尔"
+            if rule_type == "marriage_code":
+                return self._normalize_marriage(val), "婚姻状态编码"
+            if rule_type == "serial_5":
+                return self._normalize_serial5(val), "流水号校验"
+            if rule_type == "date":
+                return self._normalize_datetime(val, date_only=True), "日期解析"
+            if rule_type == "datetime":
+                return self._normalize_datetime(val), "日期时间解析"
+            if rule_type == "address":
+                return self._normalize_address(val), "地址去噪"
+            if rule_type == "gps_address":
+                return self._normalize_gps_address(val), "GPS 地址去噪"
+            if rule_type == "cn_text":
+                return self._normalize_cn_text(val), "中文文本规范"
+
+        if "证件" in field or "身份证" in field:
+            return self._normalize_id(val), "证件号格式化"
+        if "手机号" in field or "电话" in field:
+            return self._normalize_phone(val), "手机号清洗"
+        if "ip" in field.lower():
+            return self._normalize_ip(val), "IP 规范化"
+        if "日期" in field or ("时间" in field and "时长" not in field):
+            return self._normalize_datetime(val), "日期/时间解析"
+        if any(k in field for k in ["地址", "地区", "城市", "归属地"]):
+            return self._normalize_address(val), "地址去噪"
+
+        if self._looks_like_ratio_field(field):
+            non_neg = self._keyword_need_non_negative(field)
+            return self._normalize_ratio(val, allow_negative=not non_neg), "比例/使用率转小数"
+        if self._looks_like_amount_field(field):
+            non_neg = self._keyword_need_non_negative(field)
+            return self._normalize_number(val, allow_negative=not non_neg), "金额/额度数值化"
+        if self._looks_like_count_field(field):
+            non_neg = self._keyword_need_non_negative(field)
+            return self._normalize_integer(val, allow_negative=not non_neg), "次数/计数转整数"
+        if self._looks_like_duration_field(field):
+            non_neg = self._keyword_need_non_negative(field)
+            return self._normalize_number(val, allow_negative=not non_neg), "时长/月份/天数转数值"
+
+        return self._normalize_text(val), "文本去空白"
+
+    # ---------------- 具体归一化 ---------------- #
+    def _normalize_missing(self, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        val = str(value).strip()
+        if val == "":
+            return None
+        if val.lower() in {"null", "none", "nan", "na", "n/a", "-", "--", "未填写", "未知"}:
+            return None
+        return val
+
+    def _normalize_text(self, value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip()
+
+    def _normalize_id(self, value: str) -> Optional[str]:
+        cleaned = re.sub(r"\s+", "", value).upper()
+        cleaned = cleaned.replace("（", "(").replace("）", ")")
+        cleaned = cleaned.replace("－", "-").replace("，", ",").replace("。", ".")
+        cleaned = cleaned.replace("Ｏ", "0").replace("ｏ", "0").replace("Ｘ", "X")
+        cleaned = re.sub(r"[^0-9Xx]", "", cleaned).upper()
+        if len(cleaned) in (15, 18):
+            return cleaned
+        return None
+
+    def _normalize_phone(self, value: str) -> Optional[str]:
+        digits = re.sub(r"\D", "", value)
+        digits = digits[2:] if digits.startswith("86") and len(digits) > 11 else digits
+        if len(digits) == 11:
+            return digits
+        return None
+
+    def _normalize_bool01(self, value: str) -> Optional[int]:
+        v = value.strip()
+        if v in {"0", "1"}:
+            return int(v)
+        return None
+
+    def _normalize_marriage(self, value: str) -> Optional[int]:
+        v = re.sub(r"\D", "", value)
+        if v in {"10", "20", "30", "40", "91", "99"}:
+            return int(v)
+        return None
+
+    def _normalize_serial5(self, value: str) -> Optional[str]:
+        v = value.strip()
+        if re.fullmatch(r"[A-Za-z0-9]+(-[A-Za-z0-9]+){4}", v):
+            return v
+        return None
+
+    def _normalize_cn_text(self, value: str) -> str:
+        cleaned = re.sub(r"[ \t\r\n]+", " ", value)
+        return cleaned.strip()
+
+    def _normalize_gps_address(self, value: str) -> str:
+        cleaned = re.sub(r"^[0-9]{4,6}", "", value).strip()
+        cleaned = cleaned.strip(",， ")
+        return self._normalize_address(cleaned)
+
+    def _normalize_ip(self, value: str) -> str:
+        return value.strip().lower()
+
+    def _normalize_address(self, value: str) -> str:
+        cleaned = re.sub(r"[，,\s]+", " ", value).strip()
+        return cleaned
+
+    def _normalize_datetime(self, value: str, date_only: bool = False) -> Optional[str]:
+        val = value.strip()
+        date_formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y/%m/%d %H:%M",
+            "%Y.%m.%d",
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%Y%m%d",
+        ]
+        if date_only:
+            date_formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y%m%d"]
+        for fmt in date_formats:
+            try:
+                dt = datetime.strptime(val, fmt)
+                if not date_only and any(token in fmt for token in ["%H", "%M", "%S"]):
+                    return dt.strftime("%Y-%m-%d %H:%M:%S")
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        if not date_only:
+            for fmt in ["%H:%M:%S", "%H:%M"]:
+                try:
+                    dt = datetime.strptime(val, fmt)
+                    return dt.strftime("%H:%M:%S")
+                except ValueError:
+                    continue
+        return None
+
+    def _normalize_number(self, value: str, allow_negative: bool = True) -> Optional[float]:
+        text = value.replace(",", "").replace("，", "").replace("元", "").strip()
+        multiplier = 1.0
+        if "万" in text:
+            multiplier = 10000.0
+            text = text.replace("万", "")
+        if text.endswith("%"):
+            try:
+                num = float(text.rstrip("%")) / 100.0
+            except ValueError:
+                return None
+        else:
+            try:
+                num = float(text) * multiplier
+            except ValueError:
+                numbers = re.findall(r"-?\d+\.?\d*", text)
+                if not numbers:
+                    return None
+                try:
+                    num = float(numbers[0]) * multiplier
+                except ValueError:
+                    return None
+        if not allow_negative and num < 0:
+            return None
+        return num
+
+    def _normalize_integer(self, value: str, allow_negative: bool = True) -> Optional[int]:
+        number = self._normalize_number(value, allow_negative=allow_negative)
+        if number is None:
+            return None
+        try:
+            return int(round(number))
+        except (ValueError, TypeError):
+            return None
+
+    def _normalize_ratio(self, value: str, allow_negative: bool = True) -> Optional[float]:
+        num = self._normalize_number(value, allow_negative=allow_negative)
+        if num is None:
+            return None
+        if num > 1.0 and "." not in value and "%" not in value:
+            return num / 100.0
+        return num
+
+    # ---------------- 关键词判定 ---------------- #
+    def _keyword_need_non_negative(self, field: str) -> bool:
+        if field in self.field_rules and self.field_rules[field] == "numeric_non_negative":
+            return True
+        return any(k in field for k in self.default_negative_to_null_keywords)
+
+    def _looks_like_amount_field(self, field: str) -> bool:
+        keywords = ["金额", "余额", "额度", "收入", "基数", "缴存", "薪资", "差值", "合计"]
+        return any(k in field for k in keywords)
+
+    def _looks_like_ratio_field(self, field: str) -> bool:
+        keywords = ["比例", "比率", "占比", "使用率"]
+        return any(k in field for k in keywords)
+
+    def _looks_like_count_field(self, field: str) -> bool:
+        keywords = ["次数", "数量", "账户数", "笔数", "机构数", "月数", "天数"]
+        return any(k in field for k in keywords)
+
+    def _looks_like_duration_field(self, field: str) -> bool:
+        keywords = ["时长", "月份", "月", "天", "距今", "年数", "间隔", "年龄"]
+        return any(k in field for k in keywords)
+

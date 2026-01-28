@@ -15,7 +15,7 @@ def test_foundation_model():
     # 1. 模拟配置
     config = {
         "model_name": "gpt-3.5-turbo",
-        "api_key": "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", # 这是一个测试key，实际调用时会失败但能验证代码逻辑
+        "api_key": os.getenv("OPENAI_API_KEY", "your-test-key-here"),  # 从环境变量读取
         "base_url": "https://api.openai.com/v1",
         "temperature": 0.5
     }

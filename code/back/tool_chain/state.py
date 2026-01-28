@@ -15,4 +15,5 @@ class State(TypedDict):
     rule_matching : str #规则匹配结果
     report: str #风险报告
     risk: str #风险评分
+    case_profile: str
     response: str #回答

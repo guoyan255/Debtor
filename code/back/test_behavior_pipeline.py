@@ -1,26 +1,29 @@
 """
-简单可执行的流水线测试脚本，验证：
-data_loader -> data_processing -> case_template_formatter -> behavior_association_matching
-按顺序运行，并打印最终的行为/关联标签输出。
+Simple CLI to run the behavior pipeline.
+Supports two modes:
+  - stream (default): read CSV row by row, emit one JSON line per row
+  - batch: keep previous one-shot behavior (single summary)
 
-运行示例（默认读取 back/2.csv，文件无表头时按 DEFAULT_COLUMNS 映射）：
-    python Debtor/code/back/tool_chain/test_behavior_pipeline.py
+Pipeline steps: data_loader -> data_processing -> case_template_formatter -> behavior_association_matching
 
-默认直接使用 DeepSeek，与其他工具保持一致（需正确配置 DEEPSEEK_KEY / DEEPSEEK_URL）。
+Example:
+    python Debtor/code/back/test_behavior_pipeline.py --file 2.csv --mode stream --limit 3
 """
+
+from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterator
+from datetime import datetime
+import time
 
-# 便于脚本直接运行找到同级模块
 _CUR_DIR = Path(__file__).resolve().parent
 _BACK_DIR = _CUR_DIR.parent
 if str(_BACK_DIR) not in sys.path:
     sys.path.insert(0, str(_BACK_DIR))
 
-# ---------------- 导入组件 ---------------- #
 from tool_chain.data_loader import data_loader
 from tool_chain.data_processing import data_processing
 from tool_chain.case_formatter import case_template_formatter
@@ -29,7 +32,6 @@ from tool_chain.state import State
 
 
 def _initial_state() -> State:
-    # 依据 State 类型补全默认字段
     return {
         "data": [],
         "analysis_data": "",
@@ -47,53 +49,120 @@ def _initial_state() -> State:
     }
 
 
-def run_pipeline(file_path: str = "2.csv", has_header: bool = False, case_id: str = "case_test_0001") -> Dict:
+def run_pipeline(
+    file_path: str = "2.csv",
+    has_header: bool = False,
+    case_id: str = "case_test_0001",
+) -> Dict:
     state: State = _initial_state()
 
-    # 1) 数据加载
     loader = data_loader(file_path=file_path, has_header=has_header)
     state = loader.load_data(state)
 
-    # 2) 数据清洗
     processor = data_processing()
     state = processor.process_data(state)
 
-    # 3) 案例画像生成
     formatter = case_template_formatter()
     state = formatter.format_from_processed(state, case_id=case_id)
 
-    # 4) 行为/关联标签挖掘
     matcher = behavior_association_matching()
     state = matcher.analyze(state, case_id=case_id)
 
     return state
 
 
+def stream_pipeline(
+    file_path: str = "2.csv",
+    has_header: bool = False,
+    case_prefix: str = "case_stream",
+    start_index: int = 1,
+    limit: int | None = None,
+) -> Iterator[Dict]:
+    """
+    Iterate CSV rows, processing each independently.
+    """
+    base_state: State = _initial_state()
+    loader = data_loader(file_path=file_path, has_header=has_header)
+    loaded = loader.load_data(base_state)
+    rows = loaded.get("data", [])
+
+    processor = data_processing()
+    formatter = case_template_formatter()
+    matcher = behavior_association_matching()
+
+    for idx, row in enumerate(rows, start=start_index):
+        if limit is not None and idx - start_index >= limit:
+            break
+
+        start_ts = time.perf_counter()
+
+        state = _initial_state()
+        state["analysis_data"] = loaded.get("analysis_data", "")
+        state["data"] = [row]
+        state["response"] = loaded.get("response", "")
+
+        case_id = f"{case_prefix}_{idx:04d}"
+        state = processor.process_data(state)
+        state = formatter.format_from_processed(state, case_id=case_id)
+        state = matcher.analyze(state, case_id=case_id)
+
+        elapsed = round(time.perf_counter() - start_ts, 3)
+        finished_at = datetime.now().isoformat(timespec="seconds")
+
+        yield {
+            "case_id": case_id,
+            "behavior_tags": state.get("behavior_tags"),
+            "association_tags": state.get("association_tags"),
+            "temporal_tags": state.get("temporal_tags"),
+            "rationality_tags": state.get("rationality_tags"),
+            "elapsed_seconds": elapsed,
+            "finished_at": finished_at,
+        }
+
+
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="测试背债人行为/关联标签流水线")
-    parser.add_argument("--file", default="2.csv", help="待处理 CSV 路径（相对 back/）")
-    parser.add_argument("--has-header", action="store_true", help="CSV 是否包含表头")
-    parser.add_argument("--case-id", default="case_test_0001", help="案例 ID")
+    parser = argparse.ArgumentParser(
+        description="Run behavior pipeline in stream (default) or batch mode."
+    )
+    parser.add_argument("--file", default="2.csv", help="CSV path (relative to back/ by default)")
+    parser.add_argument("--has-header", action="store_true", help="CSV has header row")
+    parser.add_argument("--case-id", default="case_test_0001", help="Case ID prefix")
+    parser.add_argument(
+        "--mode",
+        choices=["stream", "batch"],
+        default="stream",
+        help="stream: per-row output; batch: single aggregated run",
+    )
+    parser.add_argument("--limit", type=int, default=None, help="Max rows to process (stream mode)")
+    parser.add_argument("--offset", type=int, default=0, help="Skip first N rows before processing")
     args = parser.parse_args()
 
-    # 解析文件真实路径（默认与 back 同级）
     file_path = args.file
     if not Path(file_path).exists():
         candidate = _BACK_DIR.parent / args.file
         if candidate.exists():
             file_path = str(candidate)
 
-    state = run_pipeline(file_path=file_path, has_header=args.has_header, case_id=args.case_id)
-
-    summary = {
-        "response_chain": state.get("response", ""),
-        "behavior_tags": state.get("behavior_tags"),
-        "association_tags": state.get("association_tags"),
-        "raw_output": state.get("behavior_matching_raw"),
-    }
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if args.mode == "stream":
+        for summary in stream_pipeline(
+            file_path=file_path,
+            has_header=args.has_header,
+            case_prefix=args.case_id,
+            start_index=args.offset + 1,
+            limit=args.limit,
+        ):
+            print(json.dumps(summary, ensure_ascii=False), flush=True)
+    else:
+        state = run_pipeline(file_path=file_path, has_header=args.has_header, case_id=args.case_id)
+        summary = {
+            "behavior_tags": state.get("behavior_tags"),
+            "association_tags": state.get("association_tags"),
+            "temporal_tags": state.get("temporal_tags"),
+            "rationality_tags": state.get("rationality_tags"),
+        }
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

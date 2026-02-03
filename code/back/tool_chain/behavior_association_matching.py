@@ -6,8 +6,6 @@ Relies on DeepSeek LLM.
 """
 
 import json
-from typing import Dict
-
 from model_components.deepseek_model import DeepSeekLLM
 from tool_chain.state import State
 
@@ -74,7 +72,7 @@ class behavior_association_matching:
 {data_json}
 
 素材2: 【案例画像文本】
-{case_profile}
+        {case_profile}
 """
 
     def analyze(self, state: State, case_id: str = "case_0001") -> State:
@@ -130,6 +128,7 @@ class behavior_association_matching:
             state["rationality_tags"] = parsed.get("rationality_tags", [])
             state["missing_evidence"] = parsed.get("missing_evidence", [])
             state["behavior_matching_raw"] = parsed
+            state["behavior_matching_status"] = "parsed_ok"
         else:
             state["behavior_tags"] = []
             state["association_tags"] = []
@@ -137,8 +136,14 @@ class behavior_association_matching:
             state["rationality_tags"] = []
             state["missing_evidence"] = []
             state["behavior_matching_raw"] = content
+            state["behavior_matching_status"] = "parse_failed"
 
-        state["response"] = state.get("response", "") + "瀹屾垚behavior_association_matching"
+        state["response"] = (
+            state.get("response", "")
+            + "完成behavior_association_matching("
+            + state["behavior_matching_status"]
+            + ")"
+        )
         return state
 
 

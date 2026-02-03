@@ -17,3 +17,10 @@ class State(TypedDict):
     risk: str #风险评分
     case_profile: str
     response: str #回答
+    behavior_tags: List[Dict]  # 行为标签
+    association_tags: List[Dict]  # 关联标签
+    temporal_tags: List[Dict]  # 时间序标签
+    rationality_tags: List[Dict]  # 合理性标签
+    missing_evidence: List[str]  # 缺失字段
+    behavior_matching_raw: Dict | str  # LLM 原始输出或解析后的对象
+    pattern_mining: Dict  # 模式挖掘结果

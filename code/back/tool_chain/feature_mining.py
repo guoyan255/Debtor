@@ -25,7 +25,8 @@ class feature_mining:
 1) 所有新特征必须基于 high_confidence_patterns（注明来源 pattern_number/片段）；可对已知特征做量化/拆分/组合，也可新增，但必须有模式支撑。
 2) 特征需量化，给出具体阈值/区间，避免模糊表达；若数据不足用 "N/A" 并说明。
 3) 每条特征字段: name, metric_def(计算逻辑/公式), threshold(数值或区间), data_source(字段/表/模式引用), linkage(关联的高置信度模式编号), risk_level(低/中/高), reason(≤80字), confidence(0-1)。
-4) 输出 JSON，仅含 mined_features 数组，按风险或贡献度降序。
+4) 输出 JSON，不仅含 mined_features 数组，还应包含known_features数组，按风险或贡献度降序。
+5）应排除mined_features 数组中与known_features数组意义相同的特征，避免重复。
 """
 
     def mine_features(self, state: State) -> dict:

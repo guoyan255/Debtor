@@ -85,8 +85,22 @@ class behavior_association_matching:
             case_profile=case_profile,
         )
 
-        response = self.llm.invoke(prompt)
-        content = response.content
+        content = ""
+        if hasattr(self.llm, "stream"):
+            try:
+                chunks = []
+                for chunk in self.llm.stream(prompt):
+                    text = getattr(chunk, "content", "") or str(chunk)
+                    print(text, end="", flush=True)
+                    chunks.append(text)
+                print()  # 换行，保证控制台可读
+                content = "".join(chunks)
+            except Exception:
+                response = self.llm.invoke(prompt)
+                content = response.content
+        else:
+            response = self.llm.invoke(prompt)
+            content = response.content
 
         def _strip_code_fence(text: str) -> str:
             t = text.strip()

@@ -73,8 +73,22 @@ class pattern_mining:
     # ---------- 模式挖掘 ---------- #
     def mine(self, cases: List[Dict], top_n: int = 20) -> Dict:
         prompt = self.build_llm_prompt(cases, top_n)
-        resp = self.llm.invoke(prompt)
-        content = resp.content.strip()
+        content = ""
+        if hasattr(self.llm, "stream"):
+            try:
+                chunks = []
+                for chunk in self.llm.stream(prompt):
+                    text = getattr(chunk, "content", "") or str(chunk)
+                    print(text, end="", flush=True)
+                    chunks.append(text)
+                print()  # 保证控制台换行
+                content = "".join(chunks).strip()
+            except Exception:
+                resp = self.llm.invoke(prompt)
+                content = resp.content.strip()
+        else:
+            resp = self.llm.invoke(prompt)
+            content = resp.content.strip()
         # best-effort JSON parse
         try:
             return json.loads(content)

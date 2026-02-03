@@ -1,29 +1,31 @@
+import json
 import os
-import pandas as pd
 
-from tool_chain.rule_mining import rule_mining  # 保持类名与文件名一致
+from tool_chain.rule_mining import rule_mining
 from tool_chain.state import State
 
 
-def run_analysis(file_path: str):
-    # --- 1. 读取 CSV 数据 ---
-    try:
-        # 优先 UTF-8，失败回退 GBK；保留原有架构，仅增强健壮性
+def run_analysis(gxl_path: str, feature_path: str):
+    # --- 1. 读取模式库与已挖掘特征 ---
+    def _read_json(path, default):
         try:
-            df = pd.read_csv(file_path, nrows=50, dtype=str, encoding="utf-8-sig")
-        except UnicodeDecodeError:
-            df = pd.read_csv(file_path, nrows=50, dtype=str, encoding="gbk")
+            with open(path, "r", encoding="utf-8") as f:
+                return json.loads(f.read())
+        except Exception as e:
+            print(f"读取 {path} 失败: {e}")
+            return default
 
-        # 填充缺失，避免 LLM 处理异常
-        df = df.fillna("")
-        user_records = df.to_dict(orient="records")
-    except Exception as e:
-        print(f"读取 CSV 失败: {e}")
-        return
+    gxl_data = _read_json(gxl_path, [])
+    patterns = gxl_data.get("high_distinctive_patterns", gxl_data) if isinstance(gxl_data, dict) else gxl_data
 
-    # --- 2. 初始化 State ---
+    feature_data = _read_json(feature_path, [])
+    features = feature_data.get("mined_features", feature_data) if isinstance(feature_data, dict) else feature_data
+
+    # --- 2. 初始化 State（无需用户 CSV，data 置空） ---
     state: State = {
-        "data": user_records,
+        "data": [],
+        "patterns": patterns,
+        "features": features,
         "text": "",
         "new_feature": "",
         "new_rule": "",
@@ -37,7 +39,10 @@ def run_analysis(file_path: str):
     }
 
     # --- 3. 调用规则挖掘 ---
-    print(f"正在分析 {len(state['data'])} 条用户数据，生成背债人规则...")
+    print(
+        f"正在结合 {len(patterns) if isinstance(patterns, list) else 1} 条模式 "
+        f"和 {len(features) if isinstance(features, list) else 1} 条特征 生成规则..."
+    )
     miner = rule_mining()
     final_state = miner.mine_rules(state)
 
@@ -51,7 +56,7 @@ def run_analysis(file_path: str):
 
 
 if __name__ == "__main__":
-    # 默认读取同目录下 1.csv，可根据需要替换路径
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(BASE_DIR, "1.csv")
-    run_analysis(csv_path)
+    gxl_path = os.path.join(BASE_DIR, "gxl.json")
+    feature_path = os.path.join(BASE_DIR, "feature.json")
+    run_analysis(gxl_path, feature_path)

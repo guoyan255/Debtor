@@ -30,20 +30,12 @@ class feature_mining:
 """
 
     def mine_features(self, state: State) -> dict:
-        # 加载高置信度模式
-        patterns_path = Path(r"E:/bzr/Debtor/code/back/gxl.json")
-        try:
-            patterns_data = json.loads(patterns_path.read_text(encoding="utf-8"))
-            patterns_payload = patterns_data.get("high_distinctive_patterns", patterns_data)
-        except FileNotFoundError:
-            patterns_payload = []
-        except json.JSONDecodeError:
-            patterns_payload = patterns_path.read_text(encoding="utf-8", errors="ignore")
-
+        # 高置信度模式直接从 state["data"] 获取（由 main_feature 预先读入 gxl.json）
+        patterns_payload = state.get("data", [])
         if isinstance(patterns_payload, (list, dict)):
             patterns_str = json.dumps(patterns_payload, ensure_ascii=False, indent=2)
         else:
-            patterns_str = str(patterns_payload)
+            patterns_str = "[]"
 
         known_features = [
             "离婚",
@@ -73,13 +65,28 @@ class feature_mining:
             user_data=user_data_str,
         )
 
-        response = self.llm.invoke(prompt)
+        content = ""
+        if hasattr(self.llm, "stream"):
+            try:
+                chunks = []
+                for chunk in self.llm.stream(prompt):
+                    text = getattr(chunk, "content", "") or str(chunk)
+                    print(text, end="", flush=True)
+                    chunks.append(text)
+                print()  # 换行，便于阅读
+                content = "".join(chunks)
+            except Exception:
+                response = self.llm.invoke(prompt)
+                content = response.content
+        else:
+            response = self.llm.invoke(prompt)
+            content = response.content
 
         # 解析 LLM 输出
         try:
-            feature_result = json.loads(response.content)
+            feature_result = json.loads(content)
             state["new_feature"] = json.dumps(feature_result, ensure_ascii=False, indent=2)
         except json.JSONDecodeError:
-            state["new_feature"] = response.content
+            state["new_feature"] = content
 
         return state

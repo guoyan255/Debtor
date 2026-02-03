@@ -74,8 +74,25 @@ class case_formatter:
         cleaned_data = state.get("data", [])
         data_json = json.dumps(cleaned_data, ensure_ascii=False, indent=2)
         prompt = self.prompt.format(case_id=case_id, data_json=data_json)
-        response = self.llm.invoke(prompt)
-        state["case_profile"] = response.content
+
+        content = ""
+        if hasattr(self.llm, "stream"):
+            try:
+                chunks = []
+                for chunk in self.llm.stream(prompt):
+                    text = getattr(chunk, "content", "") or str(chunk)
+                    print(text, end="", flush=True)
+                    chunks.append(text)
+                print()  # 换行，便于阅读
+                content = "".join(chunks)
+            except Exception:
+                response = self.llm.invoke(prompt)
+                content = response.content
+        else:
+            response = self.llm.invoke(prompt)
+            content = response.content
+
+        state["case_profile"] = content
         state["response"] = state.get("response", "") + "完成case_template_formatter"
         return state
 

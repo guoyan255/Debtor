@@ -30,53 +30,9 @@ class rule_mining:
 """
 
     def mine_rules(self, state: State):
-        patterns_path = Path(r"E:/bzr/Debtor/code/back/gxl.json")
-        features_path = Path(r"E:/bzr/Debtor/code/back/feature.json")
-
-        def _load_high_conf_patterns():
-            try:
-                data = json.loads(patterns_path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError):
-                return []
-
-            raw_patterns = data.get("high_distinctive_patterns", data)
-            if not isinstance(raw_patterns, list):
-                return []
-
-            high_conf = []
-            for item in raw_patterns:
-                if not isinstance(item, dict):
-                    continue
-                score = None
-                val = item.get("value")
-                if isinstance(val, str) and val.strip().endswith("%"):
-                    try:
-                        score = float(val.strip().rstrip("%"))
-                    except ValueError:
-                        score = None
-                elif isinstance(val, (int, float)):
-                    score = float(val) * 100 if val <= 1 else float(val)
-
-                if score is None:
-                    conf = item.get("confidence")
-                    if isinstance(conf, (int, float)):
-                        score = float(conf) * 100 if conf <= 1 else float(conf)
-
-                if score is None or score >= 80:
-                    high_conf.append(item)
-
-            return high_conf or raw_patterns
-
-        def _load_mined_features():
-            try:
-                data = json.loads(features_path.read_text(encoding="utf-8"))
-                mined = data.get("mined_features", data)
-                return mined if isinstance(mined, list) else []
-            except (FileNotFoundError, json.JSONDecodeError):
-                return []
-
-        patterns_payload = _load_high_conf_patterns()
-        features_payload = _load_mined_features()
+        # 高置信度模式与已挖掘特征由上游 main_rule 填入 state
+        patterns_payload = state.get("patterns", [])
+        features_payload = state.get("features", [])
 
         patterns_str = (
             json.dumps(patterns_payload, ensure_ascii=False, indent=2)
@@ -96,18 +52,34 @@ class rule_mining:
         if not user_data_str:
             user_data_str = "无"
 
-        # 调用大模型
+        # 调用大模型（默认流式输出，同时汇总最终文本）
         prompt = (
             self.prompt_template.replace("{patterns}", patterns_str)
             .replace("{features}", features_str)
             .replace("{user_data}", user_data_str)
         )
-        response = self.llm.invoke(prompt)
+
+        content = ""
+        if hasattr(self.llm, "stream"):
+            try:
+                chunks = []
+                for chunk in self.llm.stream(prompt):
+                    text = getattr(chunk, "content", "") or str(chunk)
+                    print(text, end="", flush=True)
+                    chunks.append(text)
+                print()  # 换行，保持控制台整洁
+                content = "".join(chunks)
+            except Exception:
+                response = self.llm.invoke(prompt)
+                content = response.content
+        else:
+            response = self.llm.invoke(prompt)
+            content = response.content
 
         # 结果写回 state
         try:
-            parsed = json.loads(response.content)
+            parsed = json.loads(content)
             state["new_rule"] = json.dumps(parsed, ensure_ascii=False, indent=2)
         except json.JSONDecodeError:
-            state["new_rule"] = response.content
+            state["new_rule"] = content
         return state

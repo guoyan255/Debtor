@@ -1,32 +1,29 @@
-import pandas as pd
 import os
-from tool_chain.state import State
-from tool_chain.feature_mining import feature_mining
+import json
+import os
 
-def run_analysis(file_path: str):
-    # --- 1. 读取 CSV 数据 ---
+from tool_chain.feature_mining import feature_mining
+from tool_chain.state import State
+
+
+def run_analysis(json_path: str):
+    # --- 1. 读取 gxl.json 数据 ---
     try:
-        # 只读取前 n 条，dtype=str 避免长数字被截断
-        df = pd.read_csv(
-            file_path,
-            nrows=50,
-            dtype=str,
-            encoding="gbk"
-        )
-        
-        # 将空值填充为空字符串，防止 LLM 处理时报错
-        df = df.fillna("")
-        
-        # 转换为 List[Dict] 格式
-        # 结果示例: [{"姓名": "张三", "身份证号": "..."}, {...}]
-        user_records = df.to_dict(orient='records')
-        
+        data = json.loads(open(json_path, "r", encoding="utf-8").read())
+        if isinstance(data, dict):
+            # 优先取 high_distinctive_patterns，否则整个 dict 作为单元素列表
+            user_records = data.get("high_distinctive_patterns", data)
+            if not isinstance(user_records, list):
+                user_records = [user_records]
+        elif isinstance(data, list):
+            user_records = data
+        else:
+            user_records = [data]
     except Exception as e:
-        print(f"读取 CSV 文件失败: {e}")
+        print(f"读取 {json_path} 失败: {e}")
         return
 
     # --- 2. 初始化 State ---
-    # 按照你定义的 State 结构进行完整初始化
     state: State = {
         "data": user_records,
         "text": "",
@@ -38,24 +35,25 @@ def run_analysis(file_path: str):
         "rule_matching": "",
         "report": "",
         "risk": "",
-        "response": ""
+        "response": "",
     }
 
-    # --- 3. 调用大模型分析节点 ---
-    print(f"正在分析 {len(state['data'])} 条用户数据，寻找隐藏的‘背债人’特征...")
-    
+    # --- 3. 调用特征挖掘 ---
+    print(f"正在分析 {len(state['data'])} 条模式/特征数据，生成特征...")
     miner = feature_mining()
     final_state = miner.mine_features(state)
-    # --- 5. 输出挖掘出的新特征 ---
-    print("\n" + "="*30 + " 挖掘结果 " + "="*30)
-    if final_state["new_feature"]:
+
+    # --- 4. 输出结果 ---
+    print("\n" + "=" * 30 + " 特征挖掘结果 " + "=" * 30)
+    if final_state.get("new_feature"):
         print(final_state["new_feature"])
     else:
-        print("未发现显著新特征或模型未返回结果。")
-    print("="*68)
+        print("未发现新特征或模型未返回结果。")
+    print("=" * 68)
+
 
 if __name__ == "__main__":
-    # 指定你的文件名 1.csv
+    # 默认读取同目录下 gxl.json，可按需替换路径
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(BASE_DIR, "1.csv")
-    run_analysis(csv_path)
+    json_path = os.path.join(BASE_DIR, "gxl.json")
+    run_analysis(json_path)

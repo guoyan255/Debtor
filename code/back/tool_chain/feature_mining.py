@@ -1,126 +1,84 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
 from model_components.deepseek_model import DeepSeekLLM
 from tool_chain.state import State
-import json
+
 
 class feature_mining:
+    """特征挖掘：基于高置信度模式 + 已知特征，生成量化风险特征。"""
 
     def __init__(self):
         deepseek_client = DeepSeekLLM()
         self.llm = deepseek_client.llm
         self.prompt_template = """
-一、任务背景
-在银行贷款领域，职业背债人的数量在快速上升，此类群体的存在严重扰乱金融秩序，加剧银行信贷风险，对金融机构风控体系构成重大挑战。
-为精准识别职业背债人、强化信贷风险防控，需从已整理的背债人数据中提取核心特征，为银行风控模型优化、风险用户筛查提供数据支撑。
+你是风险特征挖掘专家。直接使用提供的高置信度模式与已知特征，产出可量化的新特征。
 
-职业背债人定义：职业背债人是指为获取即时经济利益，以牺牲自身信用、承担法律风险甚至刑事犯罪为代价，
-专门替他人有偿承担债务或配合实施骗取金融机构贷款等违法犯罪行为的群体。他们通常从一开始就没打算，也没有能力偿还所承担的债务，本质上是金融诈骗链条中的“工具人”和“替罪羊”。
-国家金融监督管理总局对其定义为：为获取利益，以牺牲自身信用为代价，专门替他人承担债务的群体，多在不法中介诱导下参与“职业背债”骗局。
+输入:
+- high_confidence_patterns (JSON): {patterns}
+- known_features: {known_features}
+- case_data: {user_data}
 
-二、角色定位
-请你扮演一名具备10年以上银行信贷风控经验、精通金融数据挖掘与特征提取的专业分析师，同时熟悉职业背债人相关行为模式及金融监管要求。
-你需以客观、严谨的态度，基于提供的数据，精准挖掘背债人专属特征，排除常规逾期用户的共性特征，聚焦背债人独有的行为、信用、财务及身份属性。
-
-三、任务要求
-
-1. 特征提取全面性：从行为、信用、财务、身份、社交关联等多维度提取背债人特征，涵盖显性特征（如明确的多头借贷记录）
-与隐性特征（如短期内频繁变更联系方式、公积金缴纳异常），不得遗漏关键特征。
-
-2. 特征区分度：严格区分背债人与普通逾期用户、正常贷款用户的特征差异，提炼仅属于或高关联于背债人的核心特征，标注特征与背债行为的关联性强度（高/中/低）。
-
-3. 特征精准性：基于输入数据提炼特征，避免主观臆断；对于数据中模糊或存在歧义的信息，需标注疑问并基于合理推测给出可能特征，同时说明推测依据。
-
-4. 特征分类梳理：对提取的特征按维度进行分类整理，每个特征需附带具体说明（如“公积金断缴”需说明是“贷款申请前3个月内突然断缴”还是“长期断缴后短期补缴”），
-明确特征表现形式。
-
-5. 异常数据标注：分析过程中若发现数据存在缺失、矛盾、异常值等情况，需单独标注，同时说明该异常对特征提取的影响。
-
-
-四、输入内容说明
-输入内容为多条已整理完毕的职业背债人数据（统一命名为data），数据维度可能涵盖但不限于以下类别，具体以实际提供数据为准：
-
-- 身份信息：年龄、性别、职业、学历、户籍所在地、居住地址稳定性（近1年变更次数）、联系方式变更频率等；
-
-- 信用信息：征信报告详情（逾期记录、查询次数、多头借贷情况、担保记录）、公积金缴纳状态（正常缴纳/断缴/补缴、断缴时长、缴纳单位稳定性）、社保缴纳情况等；
-
-- 财务信息：收入流水（月收入金额、收入来源稳定性、流水真实性特征）、资产状况（房产、车辆、存款等资产是否真实、是否为虚构材料）、负债情况（现有债务总额、债务类型）等；
-
-- 贷款行为信息：贷款申请时间、贷款金额、贷款用途（申报用途与实际用途是否一致）、贷款审批流程中的异常表现、与贷款中介的关联痕迹等；
-
-- 其他关联信息：社交关系中是否有其他背债人/金融诈骗涉案人员、是否存在频繁与陌生企业/个人有资金往来等。
-
-请基于实际输入的data数据字段，针对性提取特征，无需局限于上述预设维度。
-
-五、分析思路
-
-1. 数据预处理：先对输入的data数据进行初步梳理，排查缺失值、重复值、矛盾数据，标注异常数据项，明确可用于特征提取的有效数据范围；
-
-2. 多维度特征挖掘：
-        
-
-  - 行为维度：聚焦贷款申请前后的异常行为，如短期内频繁申请多笔贷款、贷款用途与职业/收入不匹配、联系方式/居住地址频繁变更等；
-
-  - 信用维度：重点分析征信异常记录，如无合理原因的公积金/社保断缴、多头借贷且贷款机构分散、征信查询次数激增但无对应贷款获批记录等；
-
-  - 财务维度：排查收入流水异常（如短期大额流水无合理来源、流水与职业收入不符）、资产证明虚构、负债与收入严重失衡等特征；
-
-  - 身份与关联维度：分析职业稳定性（如无固定职业却申请大额贷款）、社交关联中存在背债人/中介痕迹、户籍与贷款申请地无关联且无合理说明等。
-
-3. 特征验证与归类：对初步挖掘的特征进行交叉验证，剔除与背债行为关联性弱的特征，保留核心特征与次要特征，按维度归类并标注关联性强度；
-
-4. 异常说明补充：针对数据异常情况，说明对特征提取的影响，若存在关键数据缺失，需指出可能遗漏的特征方向。
-
-六、典型特征案例提示
-
-以下为职业背债人常见特征案例，供分析时参考，需结合输入data补充更多专属特征：
-
-- 公积金/社保：贷款申请前1-3个月突然断缴，无离职证明等合理理由；或长期断缴后短期补缴，补缴单位与申报职业不一致；
-
-- 多头借贷：1个月内从3家及以上不同金融机构申请贷款，贷款用途均标注为“个人消费”但无对应消费凭证，且贷款获批后资金快速转入陌生账户；
-
-- 收入与流水：申报职业为普通工薪阶层，月收入申报5000元，但银行流水显示近3个月有多笔大额入账（单笔10万以上），无合理收入来源说明；
-
-- 身份信息：近1年居住地址变更4次以上，联系方式变更3次以上，且变更后无稳定留存记录；户籍为偏远地区，在一线城市申请大额贷款却无本地工作/居住证明；
-
-- 贷款行为：贷款申请材料中职业证明、收入证明加盖的公章为虚假公章；贷款获批后1周内，资金被拆分多笔转入非本人账户，且账户户主无明确亲属/业务关联。
-
-
-七、输出规范
-请尽可能多的输出特征的同时，严格按照以下格式输出分析结果，确保结构清晰、内容精准、可直接用于银行风控场景：
-
-（严格JSON格式，无任何额外文字、注释、换行，确保可直接解析）
-{{
-  "mined_features": [
-    {{
-      "feature_value": "具体特征值（如：负债总额=60万、离异2个月+异地贷款）",
-      "risk_level": "低/中/高",
-      "reason": "挖掘理由（需关联具体用户数据，如：用户1/3/5的负债总额均>50万，符合高负债高风险标准）"
-      "confidence": 0.0-1.0（特征挖掘结果的置信度）
-    }}
-  ]
-}}
-
-八、用户数据
-基于以下背债人用户数据，全面、无遗漏地挖掘所有相关风险特征：
-用户数据：{user_data}
+要求:
+1) 所有新特征必须基于 high_confidence_patterns（注明来源 pattern_number/片段）；可对已知特征做量化/拆分/组合，也可新增，但必须有模式支撑。
+2) 特征需量化，给出具体阈值/区间，避免模糊表达；若数据不足用 "N/A" 并说明。
+3) 每条特征字段: name, metric_def(计算逻辑/公式), threshold(数值或区间), data_source(字段/表/模式引用), linkage(关联的高置信度模式编号), risk_level(低/中/高), reason(≤80字), confidence(0-1)。
+4) 输出 JSON，仅含 mined_features 数组，按风险或贡献度降序。
 """
 
     def mine_features(self, state: State) -> dict:
-        # 将 List[Dict] 转换为更易读的文本格式
-      user_data_str = ""
-      for i, d in enumerate(state["data"]):
-         user_data_str += f"用户{i+1}: {str(d)}\n"
-      prompt = self.prompt_template.format(user_data=user_data_str)
-      response = self.llm.invoke(prompt)
-      # 将挖掘出的特征结果存入state的new_feature字段
-      try:
-          # 尝试解析JSON（可选：确保输出格式合规，也可直接存原始响应）
-          feature_result = json.loads(response.content)
-          state["new_feature"] = json.dumps(feature_result, ensure_ascii=False, indent=2)
-      except json.JSONDecodeError:
-          # 若解析失败，直接存储原始响应（避免流程中断）
-          state["new_feature"] = response.content
-        
-      return state
+        # 加载高置信度模式
+        patterns_path = Path(r"E:/bzr/Debtor/code/back/gxl.json")
+        try:
+            patterns_data = json.loads(patterns_path.read_text(encoding="utf-8"))
+            patterns_payload = patterns_data.get("high_distinctive_patterns", patterns_data)
+        except FileNotFoundError:
+            patterns_payload = []
+        except json.JSONDecodeError:
+            patterns_payload = patterns_path.read_text(encoding="utf-8", errors="ignore")
 
+        if isinstance(patterns_payload, (list, dict)):
+            patterns_str = json.dumps(patterns_payload, ensure_ascii=False, indent=2)
+        else:
+            patterns_str = str(patterns_payload)
 
-      #return {"text": state["text"] + "feature_mining", "response": response.content}
+        known_features = [
+            "离婚",
+            "在网时间短",
+            "大量负债",
+            "近期多次查询贷款",
+            "患有重大疾病",
+            "收入与职业不符",
+            "公积金账户异常",
+            "社保评分低",
+            "户籍地为高风险地区",
+            "居住城市为高风险区",
+            "学历低",
+        ]
+        known_features_str = "，".join(known_features)
+
+        # 将 state.data 转为易读文本
+        user_data_str = ""
+        for i, d in enumerate(state.get("data", [])):
+            user_data_str += f"用户{i + 1}: {d}\n"
+        if not user_data_str:
+            user_data_str = "无"
+
+        prompt = self.prompt_template.format(
+            patterns=patterns_str,
+            known_features=known_features_str,
+            user_data=user_data_str,
+        )
+
+        response = self.llm.invoke(prompt)
+
+        # 解析 LLM 输出
+        try:
+            feature_result = json.loads(response.content)
+            state["new_feature"] = json.dumps(feature_result, ensure_ascii=False, indent=2)
+        except json.JSONDecodeError:
+            state["new_feature"] = response.content
+
+        return state

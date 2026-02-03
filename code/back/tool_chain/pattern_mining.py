@@ -61,10 +61,10 @@ class pattern_mining:
 - 仅依据输入数据计算，不要虚构数字；
 - 在标签共现模式中只输出共现率>=70%的数据；在时序依赖模式中只输出出现率>=60%的数据；在合理性异常模式中只输出出现率>=50%的数据；
 - 输出 JSON，字段 high_distinctive_patterns（数组）；
-- 每个元素字段：type(标签共现模式|时序依赖模式|合理性异常模式：合理性标签中 "不合理" 项的高频组合 (出现率≥50%)
-)、pattern(字符串或字符串数组)、metric(如 occurrence_rate/co_occurrence_rate/contribution)、value(数值或"N/A")、evidence(简述计算依据，如 "12/50 cases = 24%")、reason(≤80字解释为何高区分度/高贡献率)；
+- 每个元素字段：pattern_number（标签共现模式从M001开始，时序依赖模式从T001开始，合理性异常模式从R001开始）、type(标签共现模式|时序依赖模式|合理性异常模式)、pattern(字符串或字符串数组)、value(数值或"N/A")、evidence(简述计算依据，如 "12/50 cases = 24%")、reason(≤80字解释为何高区分度/高贡献率)；
 - 每类最多保留 Top {top_n}，按数值降序；
 - 数据不足时 value 用 "N/A"，reason 说明原因。
+- 最后总结输出由以上分析得到的核心结论、隐藏逻辑、未覆盖领域。
 
 输入数据 cases:
 {cases_json}

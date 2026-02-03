@@ -1,9 +1,3 @@
 # Debtor
-背债人识别系统
-五个核心层
-网页测试1
-iiiii
-分支测试
-gy分支测试
-分支push main测试
-mwlceshi
+特征、规则挖掘流程：
+数据载入、数据清洗、case formmater、behavior matching（得到bq.json）、pattern mining（使用bq.json，得到gxl.json），feature mining（使用gxl.json），rule mining（使用gxl.json）
